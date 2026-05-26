@@ -1,0 +1,7 @@
+{
+  "name": "logistica-abc",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "react-vite"
+}
