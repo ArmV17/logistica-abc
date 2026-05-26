@@ -14,6 +14,7 @@ interface ItemInventario {
   id: string;
   nombre: string;
   cantidad: number;
+  valor: number; // NUEVO CAMPO: Valor del producto
   fechaLlegada: string;
 }
 
@@ -47,6 +48,7 @@ const Home: React.FC = () => {
   // Estados de Formularios
   const [nombre, setNombre] = useState('');
   const [cantidad, setCantidad] = useState('');
+  const [valor, setValor] = useState(''); // Estado para el nuevo campo de valor
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   
   const [ventaProductId, setVentaProductId] = useState('');
@@ -64,7 +66,7 @@ const Home: React.FC = () => {
 
   // Efecto: Cargar datos en tiempo real desde Firebase
   useEffect(() => {
-    // Escuchar Inventario
+    // Escuchar Inventario (Se actualiza inmediatamente sin refrescar)
     const invQ = query(collection(db, 'inventario'), orderBy('createdAt', 'desc'));
     const unsubInv = onSnapshot(invQ, (snapshot) => {
       const items: ItemInventario[] = [];
@@ -86,15 +88,17 @@ const Home: React.FC = () => {
   // Funciones de Guardado
   const guardarMercancia = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nombre || !cantidad || !fecha) return;
+    if (!nombre || !cantidad || !valor || !fecha) return; // Validación incluye el valor
     try {
       await addDoc(collection(db, 'inventario'), {
         nombre,
         cantidad: parseInt(cantidad),
+        valor: parseFloat(valor), // Guardamos el valor como número decimal
         fechaLlegada: fecha,
         createdAt: serverTimestamp()
       });
-      setNombre(''); setCantidad(''); setFecha(new Date().toISOString().split('T')[0]);
+      // Limpiar formulario
+      setNombre(''); setCantidad(''); setValor(''); setFecha(new Date().toISOString().split('T')[0]);
       setToastMessage("¡Mercancía registrada con éxito!");
       setShowToast(true);
     } catch (error) {
@@ -215,7 +219,7 @@ const Home: React.FC = () => {
             <div className="flex items-center space-x-3 bg-white/60 backdrop-blur-xl px-6 py-3 rounded-full border border-white/40 shadow-sm">
               <Package className="h-7 w-7 text-blue-600" />
               <span className="font-extrabold text-2xl tracking-tight text-slate-800">
-                Logística<span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">Pro</span>
+                Make<span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">ABC</span>
               </span>
             </div>
 
@@ -235,7 +239,8 @@ const Home: React.FC = () => {
                   <span className="bg-blue-100 text-blue-600 p-2 rounded-2xl mr-3"><ArrowDownToLine size={24} /></span>
                   Entrada de Mercancía
                 </h2>
-                <form onSubmit={guardarMercancia} className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+                {/* Formulario ajustado a 5 columnas para incluir el Valor */}
+                <form onSubmit={guardarMercancia} className="grid grid-cols-1 md:grid-cols-5 gap-6 items-end">
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold text-slate-600 mb-2 ml-2">Nombre del Producto</label>
                     <input type="text" required value={nombre} onChange={e => setNombre(e.target.value)} className="w-full px-5 py-4 rounded-2xl bg-white/50 border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800" placeholder="Ej. Tarimas de madera" />
@@ -245,10 +250,14 @@ const Home: React.FC = () => {
                     <input type="number" required min="1" value={cantidad} onChange={e => setCantidad(e.target.value)} className="w-full px-5 py-4 rounded-2xl bg-white/50 border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800" placeholder="0" />
                   </div>
                   <div>
+                    <label className="block text-sm font-semibold text-slate-600 mb-2 ml-2">Valor Unitario</label>
+                    <input type="number" step="0.01" required min="0" value={valor} onChange={e => setValor(e.target.value)} className="w-full px-5 py-4 rounded-2xl bg-white/50 border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800" placeholder="$0.00" />
+                  </div>
+                  <div>
                     <label className="block text-sm font-semibold text-slate-600 mb-2 ml-2">Fecha</label>
                     <input type="date" required value={fecha} onChange={e => setFecha(e.target.value)} className="w-full px-5 py-4 rounded-2xl bg-white/50 border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800" />
                   </div>
-                  <div className="md:col-span-4 flex justify-end mt-4">
+                  <div className="md:col-span-5 flex justify-end mt-4">
                     <button type="submit" className="flex items-center px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl hover:scale-105 transition-all shadow-lg hover:shadow-blue-500/30 font-bold tracking-wide">
                       <Plus size={20} className="mr-2" /> Agregar a Firebase
                     </button>
@@ -265,17 +274,20 @@ const Home: React.FC = () => {
                       <tr className="bg-slate-100/50 text-slate-500 text-sm font-bold uppercase tracking-wider">
                         <th className="px-6 py-4">Producto</th>
                         <th className="px-6 py-4">Cantidad</th>
+                        <th className="px-6 py-4">Valor</th> {/* Columna nueva */}
                         <th className="px-6 py-4">Fecha</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100/50">
                       {inventario.length === 0 ? (
-                        <tr><td colSpan={3} className="px-6 py-10 text-center text-slate-400 font-medium">Bóveda de inventario vacía</td></tr>
+                        <tr><td colSpan={4} className="px-6 py-10 text-center text-slate-400 font-medium">Bóveda de inventario vacía</td></tr>
                       ) : (
                         inventario.map(item => (
                           <tr key={item.id} className="hover:bg-white/60 transition-colors">
                             <td className="px-6 py-4 font-semibold text-slate-800">{item.nombre}</td>
                             <td className="px-6 py-4 text-slate-600">{item.cantidad.toLocaleString()}</td>
+                            {/* Valor formateado como moneda */}
+                            <td className="px-6 py-4 text-emerald-600 font-bold">${item.valor?.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}</td>
                             <td className="px-6 py-4 text-slate-400 text-sm">{item.fechaLlegada}</td>
                           </tr>
                         ))
