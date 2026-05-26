@@ -33,6 +33,12 @@ import '@ionic/react/css/palettes/dark.system.css';
 /* Theme variables */
 import './theme/variables.css';
 
+/* Core CSS required for Ionic components to work properly */
+import '@ionic/react/css/core.css';
+
+/* Importar Tailwind CSS */
+import './theme/tailwind.css';
+
 setupIonicReact();
 
 const App: React.FC = () => (
