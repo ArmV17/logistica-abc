@@ -219,7 +219,7 @@ const Home: React.FC = () => {
             <div className="flex items-center space-x-3 bg-white/60 backdrop-blur-xl px-6 py-3 rounded-full border border-white/40 shadow-sm">
               <Package className="h-7 w-7 text-blue-600" />
               <span className="font-extrabold text-2xl tracking-tight text-slate-800">
-                Make<span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">ABC</span>
+                MakeUp<span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">ABC</span>
               </span>
             </div>
 
