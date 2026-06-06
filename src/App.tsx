@@ -33,6 +33,9 @@ import '@ionic/react/css/palettes/dark.system.css';
 /* Theme variables */
 import './theme/variables.css';
 
+/* Core CSS required for Ionic components to work properly */
+import '@ionic/react/css/core.css';
+
 /* Importar Tailwind CSS */
 import './theme/tailwind.css';
 
@@ -42,18 +45,10 @@ const App: React.FC = () => (
   <IonApp>
     <IonReactRouter>
       <IonRouterOutlet>
-        {/* Ruta principal de la aplicación */}
         <Route exact path="/home">
           <Home />
         </Route>
-        
-        {/* Redirección por defecto al entrar a la raíz (/) */}
         <Route exact path="/">
-          <Redirect to="/home" />
-        </Route>
-
-        {/* Ruta comodín (*): Atrapa cualquier URL no definida y redirige a Home */}
-        <Route path="*">
           <Redirect to="/home" />
         </Route>
       </IonRouterOutlet>
