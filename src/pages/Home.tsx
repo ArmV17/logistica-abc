@@ -116,7 +116,7 @@ const Home: React.FC = () => {
       setVentaProductId(''); setVentaQty(''); setVentaFecha(new Date().toISOString().split('T')[0]);
       setToastMessage("¡Salida registrada con éxito!");
       setShowToast(true);
-      setAbcResult(null);
+      setAbcResult(null); // Limpiar ABC para forzar recálculo
     } catch (error) {
       console.error(error);
     }
@@ -134,7 +134,7 @@ const Home: React.FC = () => {
       const sold = salesByProduct[prod.id] || 0;
       const usageValue = sold * prod.valor;
       totalGlobalValue += usageValue;
-      return { ...prod, sold, usageValue };
+      return { ...prod, sold, usageValue }; 
     });
 
     productsWithValue.sort((a, b) => b.usageValue - a.usageValue);
@@ -147,6 +147,7 @@ const Home: React.FC = () => {
         result.C.push({ ...prod, percentage: '0.00', cumulative: '0.00' }); 
         return; 
       }
+      
       cumulativeValue += prod.usageValue;
       const cumulativePercentage = (cumulativeValue / totalGlobalValue) * 100;
       const currentItemPercentage = (prod.usageValue / totalGlobalValue) * 100;
@@ -213,25 +214,23 @@ const Home: React.FC = () => {
           <div className="absolute bottom-[-20%] left-[20%] w-[30rem] h-[30rem] bg-emerald-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-4000"></div>
         </div>
 
-        {/* pb-24 asegura que en celular no se oculte contenido detrás de la barra inferior */}
-        <div className="max-w-6xl mx-auto px-3 md:px-4 py-6 md:py-8 font-sans pb-28 md:pb-8">
+        <div className="max-w-6xl mx-auto px-3 md:px-4 py-6 md:py-8 font-sans pb-8">
           
-          {/* Header Mobile / Desktop */}
-          <div className="flex flex-col items-center mb-6 md:mb-10 space-y-4 md:space-y-6">
-            <div className="flex items-center space-x-3 bg-white/80 md:bg-white/60 backdrop-blur-xl px-6 py-3 rounded-full border border-white/40 shadow-sm w-[95%] md:w-auto justify-center">
+          {/* Header & Menú Capsula Universal */}
+          <div className="flex flex-col items-center mb-6 md:mb-10 space-y-4 md:space-y-6 w-full">
+            <div className="flex items-center space-x-3 bg-white/80 md:bg-white/60 backdrop-blur-xl px-6 py-3 rounded-full border border-white/40 shadow-sm w-fit justify-center">
               <Package className="h-6 w-6 md:h-7 md:w-7 text-blue-600 flex-shrink-0" />
               <span className="font-extrabold text-xl md:text-2xl tracking-tight text-slate-800">
                 Make<span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">ABC</span>
               </span>
             </div>
 
-            {/* Menú de PC (Oculto en celulares usando 'hidden md:block') */}
-            <div className="w-full hidden md:block">
-              <nav className="flex space-x-2 bg-white/40 backdrop-blur-md p-1.5 rounded-full border border-white/50 shadow-lg min-w-max mx-auto w-fit">
-                <NavButton active={activeTab === 'recepcion'} onClick={() => setActiveTab('recepcion')} icon={<ArrowDownToLine size={16} />}>Recepción</NavButton>
-                <NavButton active={activeTab === 'salidas'} onClick={() => setActiveTab('salidas')} icon={<ArrowUpFromLine size={16} />}>Salidas</NavButton>
-                <NavButton active={activeTab === 'abc'} onClick={() => setActiveTab('abc')} icon={<BarChart3 size={16} />}>Análisis ABC</NavButton>
-                <NavButton active={activeTab === 'temporada'} onClick={() => setActiveTab('temporada')} icon={<CalendarDays size={16} />}>Temporada</NavButton>
+            <div className="w-full px-1 sm:px-0">
+              <nav className="flex justify-between md:justify-center space-x-1 md:space-x-2 bg-white/60 md:bg-white/40 backdrop-blur-md p-1.5 rounded-full border border-white/50 shadow-lg w-full md:w-fit mx-auto">
+                <NavButton active={activeTab === 'recepcion'} onClick={() => setActiveTab('recepcion')} icon={<ArrowDownToLine className="w-3.5 h-3.5 md:w-4 md:h-4" />}>Recepción</NavButton>
+                <NavButton active={activeTab === 'salidas'} onClick={() => setActiveTab('salidas')} icon={<ArrowUpFromLine className="w-3.5 h-3.5 md:w-4 md:h-4" />}>Salidas</NavButton>
+                <NavButton active={activeTab === 'abc'} onClick={() => setActiveTab('abc')} icon={<BarChart3 className="w-3.5 h-3.5 md:w-4 md:h-4" />}>Análisis</NavButton>
+                <NavButton active={activeTab === 'temporada'} onClick={() => setActiveTab('temporada')} icon={<CalendarDays className="w-3.5 h-3.5 md:w-4 md:h-4" />}>Temporada</NavButton>
               </nav>
             </div>
           </div>
@@ -269,30 +268,46 @@ const Home: React.FC = () => {
                 </form>
               </div>
 
+              {/* TABLA RESPONSIVA DE INVENTARIO */}
               <div className="bg-white/80 md:bg-white/70 backdrop-blur-xl rounded-[2rem] md:rounded-[2.5rem] shadow-xl border border-white/50 p-5 md:p-8">
                 <h3 className="text-lg md:text-xl font-bold text-slate-800 mb-4 ml-1">Inventario Actual</h3>
                 
-                {/* Tabla que se puede deslizar a los lados en el celular sin romper el diseño */}
-                <div className="overflow-x-auto rounded-xl md:rounded-3xl border border-slate-100 bg-white/60 md:bg-white/40">
-                  <table className="w-full text-left min-w-[550px]">
-                    <thead>
-                      <tr className="bg-slate-200/50 text-slate-600 text-xs md:text-sm font-bold uppercase tracking-wider">
-                        <th className="px-4 py-3">Producto</th>
-                        <th className="px-4 py-3">Cantidad</th>
-                        <th className="px-4 py-3">Valor</th>
-                        <th className="px-4 py-3">Fecha</th>
+                <div className="w-full">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="hidden md:table-header-group">
+                      <tr className="bg-slate-200/50 text-slate-600 text-sm font-bold uppercase tracking-wider rounded-t-2xl">
+                        <th className="px-6 py-4 rounded-tl-2xl">Producto</th>
+                        <th className="px-6 py-4">Cantidad</th>
+                        <th className="px-6 py-4">Valor</th>
+                        <th className="px-6 py-4 rounded-tr-2xl">Fecha</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="flex flex-col gap-4 md:table-row-group md:gap-0">
                       {inventario.length === 0 ? (
-                        <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-400 font-medium text-sm">Sin inventario registrado</td></tr>
+                        <tr className="block md:table-row bg-white/50 md:bg-transparent rounded-2xl md:rounded-none"><td colSpan={4} className="px-4 py-8 text-center text-slate-400 font-medium text-sm">Sin inventario registrado</td></tr>
                       ) : (
                         inventario.map(item => (
-                          <tr key={item.id} className="hover:bg-white/60 transition-colors">
-                            <td className="px-4 py-3.5 font-semibold text-slate-800 text-sm md:text-base">{item.nombre}</td>
-                            <td className="px-4 py-3.5 text-slate-600 text-sm md:text-base">{item.cantidad.toLocaleString()}</td>
-                            <td className="px-4 py-3.5 text-emerald-600 font-bold text-sm md:text-base">${item.valor?.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}</td>
-                            <td className="px-4 py-3.5 text-slate-400 text-xs md:text-sm">{item.fechaLlegada}</td>
+                          <tr key={item.id} className="block md:table-row bg-white/70 md:bg-white/40 md:hover:bg-white/60 transition-colors rounded-[1.5rem] md:rounded-none p-4 md:p-0 shadow-sm md:shadow-none border border-white md:border-b md:border-slate-100">
+                            {/* Celda Producto */}
+                            <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 font-semibold text-slate-800 text-sm md:text-base border-b border-slate-200/60 md:border-none">
+                              <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Producto</span>
+                              <span className="text-right md:text-left">{item.nombre}</span>
+                            </td>
+                            {/* Celda Cantidad */}
+                            <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-slate-600 text-sm md:text-base border-b border-slate-200/60 md:border-none">
+                              <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Cantidad</span>
+                              <span className="text-right md:text-left">{item.cantidad.toLocaleString()}</span>
+                            </td>
+                            {/* Celda Valor */}
+                            <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-emerald-600 font-bold text-sm md:text-base border-b border-slate-200/60 md:border-none">
+                              <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Valor Unit.</span>
+                              <span className="text-right md:text-left">${item.valor?.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}</span>
+                            </td>
+                            {/* Celda Fecha */}
+                            <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-slate-500 text-xs md:text-sm">
+                              <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Fecha</span>
+                              <span className="text-right md:text-left">{item.fechaLlegada}</span>
+                            </td>
                           </tr>
                         ))
                       )}
@@ -336,29 +351,39 @@ const Home: React.FC = () => {
                 </form>
               </div>
 
+              {/* TABLA RESPONSIVA DE SALIDAS */}
               <div className="bg-white/80 md:bg-white/70 backdrop-blur-xl rounded-[2rem] md:rounded-[2.5rem] shadow-xl border border-white/50 p-5 md:p-8">
                 <h3 className="text-lg md:text-xl font-bold text-slate-800 mb-4 ml-1">Historial de Rotación</h3>
                 
-                <div className="overflow-x-auto rounded-xl md:rounded-3xl border border-slate-100 bg-white/60 md:bg-white/40">
-                  <table className="w-full text-left min-w-[350px]">
-                    <thead>
-                      <tr className="bg-slate-200/50 text-slate-600 text-xs md:text-sm font-bold uppercase tracking-wider">
-                        <th className="px-4 py-3">Fecha</th>
-                        <th className="px-4 py-3">Producto</th>
-                        <th className="px-4 py-3">Volumen</th>
+                <div className="w-full">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="hidden md:table-header-group">
+                      <tr className="bg-slate-200/50 text-slate-600 text-sm font-bold uppercase tracking-wider rounded-t-2xl">
+                        <th className="px-6 py-4 rounded-tl-2xl">Fecha</th>
+                        <th className="px-6 py-4">Producto</th>
+                        <th className="px-6 py-4 rounded-tr-2xl">Volumen</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="flex flex-col gap-4 md:table-row-group md:gap-0">
                       {ventas.length === 0 ? (
-                        <tr><td colSpan={3} className="px-4 py-8 text-center text-slate-400 font-medium text-sm">Sin movimientos</td></tr>
+                        <tr className="block md:table-row bg-white/50 md:bg-transparent rounded-2xl md:rounded-none"><td colSpan={3} className="px-4 py-8 text-center text-slate-400 font-medium text-sm">Sin movimientos</td></tr>
                       ) : (
                         ventas.map(sale => {
                           const prod = inventario.find(p => p.id === sale.productId);
                           return (
-                            <tr key={sale.id} className="hover:bg-white/60 transition-colors">
-                              <td className="px-4 py-3.5 text-slate-500 text-xs md:text-sm">{sale.date}</td>
-                              <td className="px-4 py-3.5 font-semibold text-slate-800 text-sm md:text-base">{prod ? prod.nombre : 'Desconocido'}</td>
-                              <td className="px-4 py-3.5 text-emerald-600 font-bold text-sm md:text-base">-{sale.qtySold.toLocaleString()}</td>
+                            <tr key={sale.id} className="block md:table-row bg-white/70 md:bg-white/40 md:hover:bg-white/60 transition-colors rounded-[1.5rem] md:rounded-none p-4 md:p-0 shadow-sm md:shadow-none border border-white md:border-b md:border-slate-100">
+                              <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-slate-500 text-xs md:text-sm border-b border-slate-200/60 md:border-none">
+                                <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Fecha</span>
+                                <span className="text-right md:text-left">{sale.date}</span>
+                              </td>
+                              <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 font-semibold text-slate-800 text-sm md:text-base border-b border-slate-200/60 md:border-none">
+                                <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Producto</span>
+                                <span className="text-right md:text-left">{prod ? prod.nombre : 'Desconocido'}</span>
+                              </td>
+                              <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-emerald-600 font-bold text-sm md:text-base">
+                                <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Volumen</span>
+                                <span className="text-right md:text-left">-{sale.qtySold.toLocaleString()}</span>
+                              </td>
                             </tr>
                           );
                         })
@@ -523,20 +548,12 @@ const Home: React.FC = () => {
 
         </div>
 
-        {/* ¡NUEVA BARRA DE NAVEGACIÓN INFERIOR PARA MÓVILES! (Visible solo en celular 'md:hidden') */}
-        <div className="md:hidden fixed bottom-0 left-0 w-full bg-white/90 backdrop-blur-2xl border-t border-slate-200 shadow-[0_-10px_40px_rgba(0,0,0,0.08)] z-50 flex justify-around items-end pt-2 pb-6 px-2">
-          <MobileNavButton active={activeTab === 'recepcion'} onClick={() => setActiveTab('recepcion')} icon={<ArrowDownToLine size={22} />} label="Recepción" />
-          <MobileNavButton active={activeTab === 'salidas'} onClick={() => setActiveTab('salidas')} icon={<ArrowUpFromLine size={22} />} label="Salidas" />
-          <MobileNavButton active={activeTab === 'abc'} onClick={() => setActiveTab('abc')} icon={<BarChart3 size={22} />} label="Análisis" />
-          <MobileNavButton active={activeTab === 'temporada'} onClick={() => setActiveTab('temporada')} icon={<CalendarDays size={22} />} label="Temporada" />
-        </div>
-
         <IonToast
           isOpen={showToast}
           onDidDismiss={() => setShowToast(false)}
           message={toastMessage}
           duration={2000}
-          className="font-sans font-bold text-sm md:text-base mb-16 md:mb-0" // mb-16 para que en celular el mensaje flote encima de la nueva barra
+          className="font-sans font-bold text-sm md:text-base"
           color="dark"
           position="bottom"
         />
@@ -545,33 +562,18 @@ const Home: React.FC = () => {
   );
 };
 
-// Componente: Botón de navegación tipo "Píldora" (Exclusivo para Escritorio)
+// Componente: Botón de navegación responsivo (Menos padding y texto de 10px en móvil, regular en escritorio)
 const NavButton = ({ active, onClick, icon, children }: any) => (
   <button
     onClick={onClick}
-    className={`flex items-center px-5 py-2.5 rounded-full text-sm font-bold transition-all ${
+    className={`flex items-center justify-center px-1.5 md:px-5 py-2.5 rounded-full text-[10px] md:text-sm font-bold transition-all flex-1 md:flex-none whitespace-nowrap ${
       active 
         ? 'bg-slate-800 text-white shadow-md scale-[1.02]' 
         : 'text-slate-500 hover:bg-slate-200/50 hover:text-slate-800'
     }`}
   >
-    <span className="mr-2">{icon}</span>
-    {children}
-  </button>
-);
-
-// Componente: Botón de navegación inferior (Exclusivo para Celular)
-const MobileNavButton = ({ active, onClick, icon, label }: any) => (
-  <button
-    onClick={onClick}
-    className={`flex flex-col items-center justify-center w-full px-2 py-1 transition-all ${
-      active ? 'text-blue-600 scale-110' : 'text-slate-400 hover:text-slate-600'
-    }`}
-  >
-    <div className={`p-1.5 rounded-xl transition-all ${active ? 'bg-blue-100/50' : 'bg-transparent'}`}>
-      {icon}
-    </div>
-    <span className={`text-[10px] mt-1 font-bold ${active ? 'text-blue-700' : 'font-medium'}`}>{label}</span>
+    <span className="mr-1 md:mr-2 flex-shrink-0">{icon}</span>
+    <span className="truncate">{children}</span>
   </button>
 );
 
