@@ -29,6 +29,7 @@ interface AbcItem extends ItemInventario {
   sold: number;
   percentage: string;
   cumulative: string;
+  usageValue: number;
 }
 
 interface AbcResult {
@@ -134,7 +135,7 @@ const Home: React.FC = () => {
       const sold = salesByProduct[prod.id] || 0;
       const usageValue = sold * prod.valor;
       totalGlobalValue += usageValue;
-      return { ...prod, sold, usageValue }; 
+      return { ...prod, sold, usageValue } as AbcItem; 
     });
 
     productsWithValue.sort((a, b) => b.usageValue - a.usageValue);
@@ -288,22 +289,18 @@ const Home: React.FC = () => {
                       ) : (
                         inventario.map(item => (
                           <tr key={item.id} className="block md:table-row bg-white/70 md:bg-white/40 md:hover:bg-white/60 transition-colors rounded-[1.5rem] md:rounded-none p-4 md:p-0 shadow-sm md:shadow-none border border-white md:border-b md:border-slate-100">
-                            {/* Celda Producto */}
                             <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 font-semibold text-slate-800 text-sm md:text-base border-b border-slate-200/60 md:border-none">
                               <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Producto</span>
                               <span className="text-right md:text-left">{item.nombre}</span>
                             </td>
-                            {/* Celda Cantidad */}
                             <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-slate-600 text-sm md:text-base border-b border-slate-200/60 md:border-none">
                               <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Cantidad</span>
                               <span className="text-right md:text-left">{item.cantidad.toLocaleString()}</span>
                             </td>
-                            {/* Celda Valor */}
                             <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-emerald-600 font-bold text-sm md:text-base border-b border-slate-200/60 md:border-none">
                               <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Valor Unit.</span>
                               <span className="text-right md:text-left">${item.valor?.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}</span>
                             </td>
-                            {/* Celda Fecha */}
                             <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-slate-500 text-xs md:text-sm">
                               <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Fecha</span>
                               <span className="text-right md:text-left">{item.fechaLlegada}</span>
@@ -429,7 +426,8 @@ const Home: React.FC = () => {
                     </div>
                     <div className="p-5 pt-2 space-y-3">
                       {abcResult.A.length === 0 ? <p className="text-slate-400 text-center text-sm">Vacío</p> : 
-                        abcResult.A.map(p => (
+                        /* CORTANDO A 5 PRODUCTOS CON .slice(0, 5) */
+                        abcResult.A.slice(0, 5).map(p => (
                           <div key={p.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center">
                             <div className="overflow-hidden mr-2">
                               <p className="font-bold text-slate-800 text-sm truncate">{p.nombre}</p>
@@ -438,6 +436,7 @@ const Home: React.FC = () => {
                             <span className="text-sm font-black text-emerald-500">{p.percentage}%</span>
                           </div>
                         ))}
+                        {abcResult.A.length > 5 && <p className="text-center text-xs text-slate-400 font-bold mt-2">+ {abcResult.A.length - 5} más ocultos</p>}
                     </div>
                   </div>
 
@@ -452,7 +451,8 @@ const Home: React.FC = () => {
                     </div>
                     <div className="p-5 pt-2 space-y-3">
                       {abcResult.B.length === 0 ? <p className="text-slate-400 text-center text-sm">Vacío</p> : 
-                        abcResult.B.map(p => (
+                        /* CORTANDO A 5 PRODUCTOS CON .slice(0, 5) */
+                        abcResult.B.slice(0, 5).map(p => (
                           <div key={p.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center">
                             <div className="overflow-hidden mr-2">
                               <p className="font-bold text-slate-800 text-sm truncate">{p.nombre}</p>
@@ -461,6 +461,7 @@ const Home: React.FC = () => {
                             <span className="text-sm font-black text-amber-500">{p.percentage}%</span>
                           </div>
                         ))}
+                        {abcResult.B.length > 5 && <p className="text-center text-xs text-slate-400 font-bold mt-2">+ {abcResult.B.length - 5} más ocultos</p>}
                     </div>
                   </div>
 
@@ -475,7 +476,8 @@ const Home: React.FC = () => {
                     </div>
                     <div className="p-5 pt-2 space-y-3">
                       {abcResult.C.length === 0 ? <p className="text-slate-400 text-center text-sm">Vacío</p> : 
-                        abcResult.C.map(p => (
+                        /* CORTANDO A 5 PRODUCTOS CON .slice(0, 5) */
+                        abcResult.C.slice(0, 5).map(p => (
                           <div key={p.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center">
                             <div className="overflow-hidden mr-2">
                               <p className="font-bold text-slate-800 text-sm truncate">{p.nombre}</p>
@@ -484,6 +486,7 @@ const Home: React.FC = () => {
                             <span className="text-sm font-black text-slate-500">{p.percentage}%</span>
                           </div>
                         ))}
+                        {abcResult.C.length > 5 && <p className="text-center text-xs text-slate-400 font-bold mt-2">+ {abcResult.C.length - 5} más ocultos</p>}
                     </div>
                   </div>
                 </div>
