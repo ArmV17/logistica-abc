@@ -138,6 +138,7 @@ const Home: React.FC = () => {
       return { ...prod, sold, usageValue } as AbcItem; 
     });
 
+    // Ordenar de mayor a menor valor de uso
     productsWithValue.sort((a, b) => b.usageValue - a.usageValue);
 
     let cumulativeValue = 0;
@@ -426,7 +427,7 @@ const Home: React.FC = () => {
                     </div>
                     <div className="p-5 pt-2 space-y-3">
                       {abcResult.A.length === 0 ? <p className="text-slate-400 text-center text-sm">Vacío</p> : 
-                        /* CORTANDO A 5 PRODUCTOS CON .slice(0, 5) */
+                        /* APLICANDO EXACTAMENTE EL .slice(0, 5) */
                         abcResult.A.slice(0, 5).map(p => (
                           <div key={p.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center">
                             <div className="overflow-hidden mr-2">
@@ -451,7 +452,7 @@ const Home: React.FC = () => {
                     </div>
                     <div className="p-5 pt-2 space-y-3">
                       {abcResult.B.length === 0 ? <p className="text-slate-400 text-center text-sm">Vacío</p> : 
-                        /* CORTANDO A 5 PRODUCTOS CON .slice(0, 5) */
+                        /* APLICANDO EXACTAMENTE EL .slice(0, 5) */
                         abcResult.B.slice(0, 5).map(p => (
                           <div key={p.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center">
                             <div className="overflow-hidden mr-2">
@@ -476,7 +477,7 @@ const Home: React.FC = () => {
                     </div>
                     <div className="p-5 pt-2 space-y-3">
                       {abcResult.C.length === 0 ? <p className="text-slate-400 text-center text-sm">Vacío</p> : 
-                        /* CORTANDO A 5 PRODUCTOS CON .slice(0, 5) */
+                        /* APLICANDO EXACTAMENTE EL .slice(0, 5) */
                         abcResult.C.slice(0, 5).map(p => (
                           <div key={p.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center">
                             <div className="overflow-hidden mr-2">
