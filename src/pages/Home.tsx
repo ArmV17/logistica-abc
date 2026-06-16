@@ -265,9 +265,9 @@ const Home: React.FC = () => {
                     <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Fecha</label>
                     <input type="date" required value={fecha} onChange={e => setFecha(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800 text-base" />
                   </div>
-                  <div className="md:col-span-5 flex justify-end mt-1 md:mt-4">
-                    <button type="submit" className="w-full md:w-auto flex items-center justify-center px-6 py-3.5 md:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl md:rounded-2xl active:scale-95 md:hover:scale-[1.02] transition-all shadow-lg font-bold tracking-wide text-base">
-                      <Plus size={18} className="mr-2" /> Agregar
+                  <div className="md:col-span-5 flex justify-end mt-4">
+                    <button type="submit" className="w-full md:w-auto flex items-center justify-center px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl hover:scale-105 transition-all shadow-lg hover:shadow-blue-500/30 font-bold tracking-wide text-base">
+                      <Plus size={20} className="mr-2" /> Agregar a Firebase
                     </button>
                   </div>
                 </form>
@@ -276,7 +276,6 @@ const Home: React.FC = () => {
               {/* TABLA RESPONSIVA DE INVENTARIO CON INVERSIÓN TOTAL */}
               <div className="bg-white/80 md:bg-white/70 backdrop-blur-xl rounded-[2rem] md:rounded-[2.5rem] shadow-xl border border-white/50 p-5 md:p-8">
                 
-                {/* NUEVO: Contenedor con Título e Inversión Total */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 md:mb-6 ml-1 gap-3">
                   <h3 className="text-lg md:text-xl font-bold text-slate-800">Inventario Actual</h3>
                   <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100/50 text-slate-600 px-4 py-2.5 rounded-xl shadow-sm font-bold flex items-center text-sm md:text-base w-full md:w-auto">
@@ -354,9 +353,9 @@ const Home: React.FC = () => {
                     <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Fecha de Salida</label>
                     <input type="date" required value={ventaFecha} onChange={e => setVentaFecha(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-slate-800 text-base" />
                   </div>
-                  <div className="md:col-span-4 flex justify-end mt-1 md:mt-4">
-                    <button type="submit" className="w-full md:w-auto flex items-center justify-center px-6 py-3.5 md:py-4 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl md:rounded-2xl active:scale-95 md:hover:scale-[1.02] transition-all shadow-lg font-bold tracking-wide text-base">
-                      <Plus size={18} className="mr-2" /> Registrar Rotación
+                  <div className="md:col-span-4 flex justify-end mt-4">
+                    <button type="submit" className="w-full md:w-auto flex items-center justify-center px-8 py-4 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-2xl hover:scale-105 transition-all shadow-lg hover:shadow-emerald-500/30 font-bold tracking-wide text-base">
+                      <Plus size={20} className="mr-2" /> Registrar Rotación
                     </button>
                   </div>
                 </form>
@@ -417,8 +416,8 @@ const Home: React.FC = () => {
                   </h2>
                   <p className="text-slate-500 mt-1 md:mt-2 font-medium text-sm md:text-base">Basado en volumen x valor unitario.</p>
                 </div>
-                <button onClick={calculateABC} className="flex items-center justify-center px-6 py-3.5 md:py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl md:rounded-2xl active:scale-95 md:hover:scale-[1.02] transition-all shadow-lg font-bold tracking-wide w-full md:w-auto text-base">
-                  <Play size={18} className="mr-2 fill-current" /> Procesar Datos
+                <button onClick={calculateABC} className="flex items-center justify-center px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl hover:scale-105 transition-all shadow-lg hover:shadow-indigo-500/30 font-bold tracking-wide w-full md:w-auto text-base">
+                  <Play size={20} className="mr-2 fill-current" /> Procesar Datos
                 </button>
               </div>
 
@@ -440,7 +439,6 @@ const Home: React.FC = () => {
                     </div>
                     <div className="p-5 pt-2 space-y-3">
                       {abcResult.A.length === 0 ? <p className="text-slate-400 text-center text-sm">Vacío</p> : 
-                        /* APLICANDO EXACTAMENTE EL .slice(0, 5) */
                         abcResult.A.slice(0, 5).map(p => (
                           <div key={p.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center">
                             <div className="overflow-hidden mr-2">
@@ -465,7 +463,6 @@ const Home: React.FC = () => {
                     </div>
                     <div className="p-5 pt-2 space-y-3">
                       {abcResult.B.length === 0 ? <p className="text-slate-400 text-center text-sm">Vacío</p> : 
-                        /* APLICANDO EXACTAMENTE EL .slice(0, 5) */
                         abcResult.B.slice(0, 5).map(p => (
                           <div key={p.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center">
                             <div className="overflow-hidden mr-2">
@@ -490,7 +487,6 @@ const Home: React.FC = () => {
                     </div>
                     <div className="p-5 pt-2 space-y-3">
                       {abcResult.C.length === 0 ? <p className="text-slate-400 text-center text-sm">Vacío</p> : 
-                        /* APLICANDO EXACTAMENTE EL .slice(0, 5) */
                         abcResult.C.slice(0, 5).map(p => (
                           <div key={p.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center">
                             <div className="overflow-hidden mr-2">
