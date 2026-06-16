@@ -206,6 +206,9 @@ const Home: React.FC = () => {
 
   const seasonalData = getFilteredSeasonData();
 
+  // Calcular Inversión Total para mostrar en Recepción
+  const inversionTotal = inventario.reduce((acc, item) => acc + (item.cantidad * item.valor), 0);
+
   return (
     <IonPage>
       <IonContent fullscreen className="relative bg-[#f0f4fb]">
@@ -270,9 +273,19 @@ const Home: React.FC = () => {
                 </form>
               </div>
 
-              {/* TABLA RESPONSIVA DE INVENTARIO */}
+              {/* TABLA RESPONSIVA DE INVENTARIO CON INVERSIÓN TOTAL */}
               <div className="bg-white/80 md:bg-white/70 backdrop-blur-xl rounded-[2rem] md:rounded-[2.5rem] shadow-xl border border-white/50 p-5 md:p-8">
-                <h3 className="text-lg md:text-xl font-bold text-slate-800 mb-4 ml-1">Inventario Actual</h3>
+                
+                {/* NUEVO: Contenedor con Título e Inversión Total */}
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 md:mb-6 ml-1 gap-3">
+                  <h3 className="text-lg md:text-xl font-bold text-slate-800">Inventario Actual</h3>
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100/50 text-slate-600 px-4 py-2.5 rounded-xl shadow-sm font-bold flex items-center text-sm md:text-base w-full md:w-auto">
+                    💰 Inversión Total: 
+                    <span className="ml-2 text-indigo-600 text-lg">
+                      ${inversionTotal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
                 
                 <div className="w-full">
                   <table className="w-full text-left border-collapse">
