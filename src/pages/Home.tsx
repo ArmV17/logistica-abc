@@ -24,7 +24,7 @@ interface ItemVenta {
   qtySold: number;
   date: string;
   tipoVenta: 'unidad' | 'mayoreo';
-  cobroTotal: number; // NUEVO: Reemplaza precioMayoreo para estandarizar ingresos
+  cobroTotal: number;
 }
 
 interface ItemMerma {
@@ -68,7 +68,7 @@ const Home: React.FC = () => {
   const [ventaQty, setVentaQty] = useState('');
   const [ventaFecha, setVentaFecha] = useState(new Date().toISOString().split('T')[0]);
   const [tipoVenta, setTipoVenta] = useState<'unidad' | 'mayoreo'>('unidad'); 
-  const [cobroTotal, setCobroTotal] = useState(''); // UNIFICADO PARA INGRESOS
+  const [cobroTotal, setCobroTotal] = useState('');
 
   // Estados de Análisis y Temporada
   const [abcResult, setAbcResult] = useState<AbcResult | null>(null);
@@ -174,7 +174,7 @@ const Home: React.FC = () => {
     let totalGlobalValue = 0;
     const productsWithValue = inventario.map(prod => {
       const sold = salesByProduct[prod.id] || 0;
-      const usageValue = sold * prod.valor; // Se usa el valor de inventario para ponderar peso
+      const usageValue = sold * prod.valor; 
       totalGlobalValue += usageValue;
       return { ...prod, sold, usageValue } as AbcItem; 
     });
@@ -244,7 +244,6 @@ const Home: React.FC = () => {
       }
     });
 
-    // Agrupar para lista de resultados
     const grouped: Record<string, { name: string, total: number }> = {};
     filteredSales.forEach(sale => {
       if (!grouped[sale.productId]) {
@@ -254,17 +253,15 @@ const Home: React.FC = () => {
       grouped[sale.productId].total += sale.qtySold;
     });
 
-    // PREPARAR GRÁFICA
     let chartLabels: string[] = [];
     if (seasonFilter === 'ano') chartLabels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
     else if (seasonFilter === 'mes') chartLabels = ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4', 'Sem 5'];
     else if (seasonFilter === 'semana') chartLabels = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-    else chartLabels = ['Madrugada', 'Mañana', 'Tarde', 'Noche'];
+    else chartLabels = ['Turno 1', 'Turno 2', 'Turno 3', 'Turno 4'];
 
     const chartPoints = chartLabels.map(label => ({ label, ingresos: 0, perdidas: 0 }));
     let sumIngresos = 0; let sumCostoVentas = 0; let sumMermas = 0;
 
-    // Poblar puntos de gráfica con Ventas
     filteredSales.forEach(sale => {
       const [y, m, d] = sale.date.split('-').map(Number);
       const date = new Date(y, m - 1, d);
@@ -275,14 +272,16 @@ const Home: React.FC = () => {
       if (seasonFilter === 'ano') idx = date.getMonth();
       else if (seasonFilter === 'mes') idx = Math.min(Math.floor((date.getDate() - 1) / 7), 4);
       else if (seasonFilter === 'semana') idx = date.getDay();
-      else idx = 1; // Para "dia", lo mandamos a un bloque general, ya que no guardamos hora exacta en la BD por ahora
+      else idx = 1; 
 
-      chartPoints[idx].ingresos += (sale.cobroTotal || 0);
-      sumIngresos += (sale.cobroTotal || 0);
-      sumCostoVentas += (sale.qtySold * costoUnitario);
+      // PARCHE PARA DATOS VIEJOS: Solo procesa finanzas si la venta tiene la nueva estructura
+      if (sale.cobroTotal !== undefined) {
+        chartPoints[idx].ingresos += sale.cobroTotal;
+        sumIngresos += sale.cobroTotal;
+        sumCostoVentas += (sale.qtySold * costoUnitario);
+      }
     });
 
-    // Poblar puntos de gráfica con Mermas
     filteredMermas.forEach(merma => {
       const [y, m, d] = merma.date.split('-').map(Number);
       const date = new Date(y, m - 1, d);
@@ -309,13 +308,11 @@ const Home: React.FC = () => {
   const seasonData = getSeasonDataAndChart();
   const maxChartVal = Math.max(...seasonData.chartPoints.map(p => Math.max(p.ingresos, p.perdidas)), 1);
 
-  // Historial Unificado
   const historialUnificado = [
     ...ventas.map(v => ({ ...v, tipoHistorial: 'venta' as const })),
     ...mermas.map(m => ({ ...m, tipoHistorial: 'merma' as const }))
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  // Calcular Inversión Total del Stock Actual
   const inversionTotal = inventario.reduce((acc, item) => {
     const ventasTotales = ventas.filter(v => v.productId === item.id).reduce((sum, v) => sum + v.qtySold, 0);
     const mermasTotales = mermas.filter(m => m.productId === item.id).reduce((sum, m) => sum + m.qtyDefective, 0);
@@ -509,14 +506,12 @@ const Home: React.FC = () => {
                           <option value="mayoreo">Por Mayoreo</option>
                         </select>
                       </div>
-                      {/* CAMPO DE COBRO OBLIGATORIO PARA TODAS LAS VENTAS */}
                       <div>
                         <label className="block text-sm font-bold text-emerald-600 mb-1.5 ml-1">Cobro Total (Ingreso)</label>
                         <input type="number" step="0.01" required min="1" value={cobroTotal} onChange={e => setCobroTotal(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-emerald-50 border border-emerald-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-emerald-800 font-bold text-base" placeholder="$0.00" />
                       </div>
                     </>
                   ) : (
-                    // MERMA NO TIENE COBRO
                     <div className="md:col-span-2">
                       <label className="block text-sm font-semibold text-red-600 mb-1.5 ml-1">Fecha de la Baja</label>
                       <input type="date" required value={ventaFecha} onChange={e => setVentaFecha(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-red-50 border border-red-200 focus:ring-4 focus:ring-red-100 focus:border-red-400 outline-none transition-all shadow-inner text-red-800 font-bold text-base" />
@@ -581,12 +576,12 @@ const Home: React.FC = () => {
                                   ) : mov.tipoVenta === 'mayoreo' ? (
                                     <>
                                       <span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-md font-bold mb-1 md:mb-0 md:mr-2">VENTA MAYOREO</span>
-                                      <span className="font-semibold text-emerald-600">+ ${mov.cobroTotal?.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+                                      {mov.cobroTotal !== undefined && <span className="font-semibold text-emerald-600">+ ${mov.cobroTotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>}
                                     </>
                                   ) : (
                                     <>
                                       <span className="bg-emerald-100 text-emerald-700 text-xs px-2 py-0.5 rounded-md font-bold mb-1 md:mb-0 md:mr-2">VENTA UNIDAD</span>
-                                      <span className="font-semibold text-emerald-600">+ ${mov.cobroTotal?.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+                                      {mov.cobroTotal !== undefined && <span className="font-semibold text-emerald-600">+ ${mov.cobroTotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>}
                                     </>
                                   )}
                                 </div>
