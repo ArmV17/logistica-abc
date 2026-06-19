@@ -14,9 +14,9 @@ interface ItemInventario {
   id: string;
   nombre: string;
   cantidad: number;
-  valor: number; 
-  precioMenudeo?: number; 
-  costoTotalInversion?: number; 
+  valor: number; // Internamente lo usamos como Precio de Compra
+  precioMenudeo?: number; // Precio Unitario
+  precioMayoreo?: number; // Precio por Mayoreo
   fechaLlegada: string;
 }
 
@@ -58,11 +58,12 @@ const Home: React.FC = () => {
   const [ventas, setVentas] = useState<ItemVenta[]>([]);
   const [mermas, setMermas] = useState<ItemMerma[]>([]);
 
-  // Estados de Formularios Recepción 
+  // Estados de Formularios Recepción
   const [nombre, setNombre] = useState('');
   const [cantidad, setCantidad] = useState('');
-  const [costoTotalInv, setCostoTotalInv] = useState(''); 
+  const [precioCompra, setPrecioCompra] = useState(''); 
   const [precioMenudeo, setPrecioMenudeo] = useState(''); 
+  const [precioMayoreoInv, setPrecioMayoreoInv] = useState(''); 
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   
   // Estados de Formularios Salidas
@@ -71,7 +72,6 @@ const Home: React.FC = () => {
   const [ventaQty, setVentaQty] = useState('');
   const [ventaFecha, setVentaFecha] = useState(new Date().toISOString().split('T')[0]);
   const [tipoVenta, setTipoVenta] = useState<'unidad' | 'mayoreo'>('unidad'); 
-  const [cobroTotal, setCobroTotal] = useState('');
 
   // Estados de Análisis y Temporada
   const [abcResult, setAbcResult] = useState<AbcResult | null>(null);
@@ -111,23 +111,19 @@ const Home: React.FC = () => {
   // Función Guardar Mercancía 
   const guardarMercancia = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nombre || !cantidad || !costoTotalInv || !precioMenudeo || !fecha) return;
+    if (!nombre || !cantidad || !precioCompra || !precioMenudeo || !precioMayoreoInv || !fecha) return;
     try {
-      const cant = parseInt(cantidad);
-      const costoLote = parseFloat(costoTotalInv);
-      const costoUnit = costoLote / cant;
-
       await addDoc(collection(db, 'inventario'), {
         nombre,
-        cantidad: cant,
-        costoTotalInversion: costoLote,
-        valor: costoUnit,
-        precioMenudeo: parseFloat(precioMenudeo),
+        cantidad: parseInt(cantidad),
+        valor: parseFloat(precioCompra), // Costo de compra unitario
+        precioMenudeo: parseFloat(precioMenudeo), // Precio al que vendes por pieza
+        precioMayoreo: parseFloat(precioMayoreoInv), // Precio al que vendes por volumen
         fechaLlegada: fecha,
         createdAt: serverTimestamp()
       });
 
-      setNombre(''); setCantidad(''); setCostoTotalInv(''); setPrecioMenudeo(''); setFecha(new Date().toISOString().split('T')[0]);
+      setNombre(''); setCantidad(''); setPrecioCompra(''); setPrecioMenudeo(''); setPrecioMayoreoInv(''); setFecha(new Date().toISOString().split('T')[0]);
       setToastMessage("¡Mercancía registrada con éxito!");
       setShowToast(true);
     } catch (error) {
@@ -150,18 +146,17 @@ const Home: React.FC = () => {
         });
         setToastMessage("¡Merma registrada (Descontado del stock)!");
       } else {
+        // CÁLCULO AUTOMÁTICO SEGÚN TIPO DE VENTA (UNIDAD O MAYOREO)
         let cobroFinal = 0;
+        const prodSeleccionado = inventario.find(p => p.id === ventaProductId);
+        
         if (tipoVenta === 'unidad') {
-          const prodSeleccionado = inventario.find(p => p.id === ventaProductId);
           const precioVenta = prodSeleccionado?.precioMenudeo || prodSeleccionado?.valor || 0;
           cobroFinal = parseInt(ventaQty) * precioVenta;
         } else {
-          if (!cobroTotal) {
-            setToastMessage("¡Error: Ingresa el cobro total del mayoreo!");
-            setShowToast(true);
-            return;
-          }
-          cobroFinal = parseFloat(cobroTotal);
+          // Si eligió mayoreo, usa el precio de mayoreo. Si el producto viejo no lo tiene, usa el de menudeo.
+          const precioMayoreoBD = prodSeleccionado?.precioMayoreo || prodSeleccionado?.precioMenudeo || prodSeleccionado?.valor || 0;
+          cobroFinal = parseInt(ventaQty) * precioMayoreoBD;
         }
 
         await addDoc(collection(db, 'ventas'), {
@@ -176,7 +171,7 @@ const Home: React.FC = () => {
       }
 
       setVentaProductId(''); setVentaQty(''); setVentaFecha(new Date().toISOString().split('T')[0]);
-      setTipoVenta('unidad'); setCobroTotal('');
+      setTipoVenta('unidad');
       setShowToast(true);
       setAbcResult(null); 
     } catch (error) {
@@ -223,7 +218,7 @@ const Home: React.FC = () => {
     setAbcResult(result);
   };
 
-  // ----- LÓGICA DE TEMPORADA Y GRÁFICAS -----
+  // LÓGICA DE TEMPORADA Y GRÁFICAS
   const getSeasonDataAndChart = () => {
     if (!seasonDate) return { groupedData: [], chartLabels: [], chartPoints: [], summary: { ingresos: 0, mermas: 0, costo: 0 } };
     const [tYear, tMonth, tDay] = seasonDate.split('-').map(Number);
@@ -338,7 +333,7 @@ const Home: React.FC = () => {
     return acc + (stockReal > 0 ? stockReal * item.valor : 0);
   }, 0);
 
-  // ---------- CÁLCULO DE CORDENADAS PARA GRÁFICA TIPO INVERSIÓN ----------
+  // ---------- CÁLCULO DE COORDENADAS PARA GRÁFICA TIPO INVERSIÓN ----------
   const svgWidth = 800;
   const svgHeight = 220;
   const paddingX = 40; 
@@ -363,7 +358,6 @@ const Home: React.FC = () => {
   return (
     <IonPage>
       <IonContent fullscreen className="relative bg-[#f0f4fb]">
-        {/* Animated Background Blobs */}
         <div className="fixed top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
           <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-blue-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob"></div>
           <div className="absolute top-[20%] right-[-10%] w-96 h-96 bg-purple-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
@@ -372,7 +366,6 @@ const Home: React.FC = () => {
 
         <div className="max-w-6xl mx-auto px-3 md:px-4 py-6 md:py-8 font-sans pb-8">
           
-          {/* Header & Menú Capsula Universal */}
           <div className="flex flex-col items-center mb-6 md:mb-10 space-y-4 md:space-y-6 w-full">
             <div className="flex items-center space-x-3 bg-white/80 md:bg-white/60 backdrop-blur-xl px-6 py-3 rounded-full border border-white/40 shadow-sm w-fit justify-center">
               <Package className="h-6 w-6 md:h-7 md:w-7 text-blue-600 flex-shrink-0" />
@@ -403,25 +396,31 @@ const Home: React.FC = () => {
                 <form onSubmit={guardarMercancia} className="grid grid-cols-1 md:grid-cols-6 gap-4 md:gap-6 items-end">
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Nombre del Producto</label>
-                    <input type="text" required value={nombre} onChange={e => setNombre(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800 text-base" placeholder="Ej. Tarimas de madera" />
+                    <input type="text" required value={nombre} onChange={e => setNombre(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800 text-base" placeholder="Ej. Base Líquida" />
                   </div>
                   <div className="md:col-span-1">
-                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Total Piezas</label>
+                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Total de Piezas</label>
                     <input type="number" required min="1" value={cantidad} onChange={e => setCantidad(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800 text-base" placeholder="0" />
                   </div>
                   <div className="md:col-span-1">
-                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Costo Todo el Lote</label>
-                    <input type="number" step="0.01" required min="0" value={costoTotalInv} onChange={e => setCostoTotalInv(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-blue-50 border border-blue-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800 font-bold text-base" placeholder="$0.00" />
+                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Precio de Compra</label>
+                    <input type="number" step="0.01" required min="0" value={precioCompra} onChange={e => setPrecioCompra(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800 text-base" placeholder="$0.00" />
                   </div>
                   <div className="md:col-span-1">
-                    <label className="block text-sm font-semibold text-emerald-600 mb-1.5 ml-1">Venta Menudeo</label>
+                    <label className="block text-sm font-semibold text-emerald-600 mb-1.5 ml-1">Precio Unitario</label>
                     <input type="number" step="0.01" required min="0" value={precioMenudeo} onChange={e => setPrecioMenudeo(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-emerald-50 border border-emerald-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-emerald-800 font-bold text-base" placeholder="$0.00" />
                   </div>
                   <div className="md:col-span-1">
-                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Fecha</label>
+                    <label className="block text-sm font-semibold text-purple-600 mb-1.5 ml-1">Precio Mayoreo</label>
+                    <input type="number" step="0.01" required min="0" value={precioMayoreoInv} onChange={e => setPrecioMayoreoInv(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-purple-50 border border-purple-200 focus:ring-4 focus:ring-purple-100 focus:border-purple-400 outline-none transition-all shadow-inner text-purple-800 font-bold text-base" placeholder="$0.00" />
+                  </div>
+
+                  {/* SEGUNDA FILA */}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Fecha de Registro</label>
                     <input type="date" required value={fecha} onChange={e => setFecha(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800 text-base" />
                   </div>
-                  <div className="md:col-span-6 flex justify-end mt-2">
+                  <div className="md:col-span-4 flex justify-end mt-2">
                     <button type="submit" className="w-full md:w-auto flex items-center justify-center px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl hover:scale-105 transition-all shadow-lg hover:shadow-blue-500/30 font-bold tracking-wide text-base">
                       <Plus size={20} className="mr-2" /> Agregar a Firebase
                     </button>
@@ -431,7 +430,6 @@ const Home: React.FC = () => {
 
               {/* TABLA RESPONSIVA DE INVENTARIO */}
               <div className="bg-white/80 md:bg-white/70 backdrop-blur-xl rounded-[2rem] md:rounded-[2.5rem] shadow-xl border border-white/50 p-5 md:p-8 overflow-x-auto">
-                
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 md:mb-6 ml-1 gap-3 min-w-max">
                   <h3 className="text-lg md:text-xl font-bold text-slate-800">Inventario en Almacén</h3>
                   <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100/50 text-slate-600 px-4 py-2.5 rounded-xl shadow-sm font-bold flex items-center text-sm md:text-base w-full md:w-auto">
@@ -443,28 +441,31 @@ const Home: React.FC = () => {
                 </div>
                 
                 <div className="w-full">
-                  <table className="w-full text-left border-collapse min-w-[700px]">
+                  <table className="w-full text-left border-collapse min-w-[800px]">
                     <thead className="hidden md:table-header-group">
                       <tr className="bg-slate-200/50 text-slate-600 text-sm font-bold uppercase tracking-wider rounded-t-2xl">
                         <th className="px-6 py-4 rounded-tl-2xl">Producto</th>
                         <th className="px-6 py-4">Ingresó</th>
                         <th className="px-6 py-4 text-red-500">Mermas</th>
                         <th className="px-6 py-4 text-indigo-600">Stock Actual</th>
-                        <th className="px-6 py-4 text-slate-500">Costo U.</th>
-                        <th className="px-6 py-4 text-emerald-600">P. Venta</th>
+                        <th className="px-6 py-4 text-slate-500">P. Compra</th>
+                        <th className="px-6 py-4 text-emerald-600">P. Unitario</th>
+                        <th className="px-6 py-4 text-purple-600">P. Mayoreo</th>
                         <th className="px-6 py-4 rounded-tr-2xl">Inversión</th>
                       </tr>
                     </thead>
                     <tbody className="flex flex-col gap-4 md:table-row-group md:gap-0">
                       {inventario.length === 0 ? (
-                        <tr className="block md:table-row bg-white/50 md:bg-transparent rounded-2xl md:rounded-none"><td colSpan={7} className="px-4 py-8 text-center text-slate-400 font-medium text-sm">Sin inventario registrado</td></tr>
+                        <tr className="block md:table-row bg-white/50 md:bg-transparent rounded-2xl md:rounded-none"><td colSpan={8} className="px-4 py-8 text-center text-slate-400 font-medium text-sm">Sin inventario registrado</td></tr>
                       ) : (
                         inventario.map(item => {
                           const ventasItem = ventas.filter(v => v.productId === item.id).reduce((sum, v) => sum + v.qtySold, 0);
                           const mermasItem = mermas.filter(m => m.productId === item.id).reduce((sum, m) => sum + m.qtyDefective, 0);
                           const stockActual = item.cantidad - ventasItem - mermasItem;
                           const inversionItem = stockActual > 0 ? stockActual * item.valor : 0;
-                          const precioVentaPantalla = item.precioMenudeo ? item.precioMenudeo : item.valor;
+                          
+                          const pMenudeoVisual = item.precioMenudeo || item.valor;
+                          const pMayoreoVisual = item.precioMayoreo || item.precioMenudeo || item.valor;
 
                           return (
                             <tr key={item.id} className="block md:table-row bg-white/70 md:bg-white/40 md:hover:bg-white/60 transition-colors rounded-[1.5rem] md:rounded-none p-4 md:p-0 shadow-sm md:shadow-none border border-white md:border-b md:border-slate-100">
@@ -485,12 +486,16 @@ const Home: React.FC = () => {
                                 <span className="text-right md:text-left">{stockActual.toLocaleString()}</span>
                               </td>
                               <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-slate-500 text-sm md:text-base border-b border-slate-200/60 md:border-none">
-                                <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Costo U.</span>
+                                <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">P. Compra</span>
                                 <span className="text-right md:text-left">${item.valor?.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}</span>
                               </td>
                               <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-emerald-600 font-bold text-sm md:text-base border-b border-slate-200/60 md:border-none">
-                                <span className="md:hidden text-xs text-emerald-500 font-bold uppercase tracking-wider">P. Venta</span>
-                                <span className="text-right md:text-left">${precioVentaPantalla?.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}</span>
+                                <span className="md:hidden text-xs text-emerald-500 font-bold uppercase tracking-wider">P. Unitario</span>
+                                <span className="text-right md:text-left">${pMenudeoVisual?.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}</span>
+                              </td>
+                              <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-purple-600 font-bold text-sm md:text-base border-b border-slate-200/60 md:border-none">
+                                <span className="md:hidden text-xs text-purple-500 font-bold uppercase tracking-wider">P. Mayoreo</span>
+                                <span className="text-right md:text-left">${pMayoreoVisual?.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}</span>
                               </td>
                               <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-slate-700 font-bold text-sm md:text-base">
                                 <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Inversión Actual</span>
@@ -518,7 +523,6 @@ const Home: React.FC = () => {
                 
                 <form onSubmit={guardarSalida} className="grid grid-cols-1 md:grid-cols-5 gap-4 md:gap-6 items-end">
                   
-                  {/* TIPO DE MOVIMIENTO */}
                   <div className="md:col-span-5 bg-slate-100/50 p-4 rounded-2xl border border-slate-200 mb-2">
                     <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">¿Qué tipo de movimiento es?</label>
                     <div className="flex gap-4">
@@ -558,19 +562,17 @@ const Home: React.FC = () => {
                         </select>
                       </div>
                       
-                      {tipoVenta === 'mayoreo' ? (
-                        <div>
-                          <label className="block text-sm font-bold text-emerald-600 mb-1.5 ml-1">Cobro Total Lote</label>
-                          <input type="number" step="0.01" required min="1" value={cobroTotal} onChange={e => setCobroTotal(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-emerald-50 border border-emerald-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-emerald-800 font-bold text-base" placeholder="$0.00" />
+                      <div>
+                        <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">Cobro Automático</label>
+                        <div className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-slate-100/80 border border-slate-200 text-emerald-700 font-bold text-base h-[54px] md:h-[58px] flex items-center shadow-inner">
+                          ${ventaProductId && ventaQty ? (
+                            parseInt(ventaQty) * (tipoVenta === 'unidad' 
+                              ? (inventario.find(p => p.id === ventaProductId)?.precioMenudeo || inventario.find(p => p.id === ventaProductId)?.valor || 0)
+                              : (inventario.find(p => p.id === ventaProductId)?.precioMayoreo || inventario.find(p => p.id === ventaProductId)?.precioMenudeo || inventario.find(p => p.id === ventaProductId)?.valor || 0)
+                            )
+                          ).toLocaleString('es-MX', { minimumFractionDigits: 2 }) : '0.00'}
                         </div>
-                      ) : (
-                        <div>
-                          <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">Cobro Automático</label>
-                          <div className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-slate-100/80 border border-slate-200 text-emerald-700 font-bold text-base h-[54px] md:h-[58px] flex items-center shadow-inner">
-                            ${ventaProductId && ventaQty ? (parseInt(ventaQty) * (inventario.find(p => p.id === ventaProductId)?.precioMenudeo || inventario.find(p => p.id === ventaProductId)?.valor || 0)).toLocaleString('es-MX', { minimumFractionDigits: 2 }) : '0.00'}
-                          </div>
-                        </div>
-                      )}
+                      </div>
                     </>
                   ) : (
                     <div className="md:col-span-2">
@@ -762,7 +764,7 @@ const Home: React.FC = () => {
             </div>
           )}
 
-          {/* VISTA 4: TEMPORADA (AHORA CON GRÁFICA DE INVERSIÓN ESTILO LÍNEA SVG) */}
+          {/* VISTA 4: TEMPORADA CON GRÁFICAS FINANCIERAS */}
           {activeTab === 'temporada' && (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-5 md:space-y-6">
               
@@ -823,17 +825,14 @@ const Home: React.FC = () => {
                     <div className="min-w-[650px] relative h-64 mt-4">
                       <svg viewBox="0 0 800 240" className="w-full h-full overflow-visible">
                         <defs>
-                          {/* Degradado para Ingresos (Verde) */}
                           <linearGradient id="gradIngresos" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="0%" stopColor="#10b981" stopOpacity="0.4" />
                             <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
                           </linearGradient>
-                          {/* Degradado para Pérdidas (Rojo) */}
                           <linearGradient id="gradPerdidas" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.4" />
                             <stop offset="100%" stopColor="#f43f5e" stopOpacity="0" />
                           </linearGradient>
-                          {/* Filtro de Sombra Brillante (Glow) */}
                           <filter id="glowIngreso" x="-20%" y="-20%" width="140%" height="140%">
                             <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="#10b981" floodOpacity="0.4"/>
                           </filter>
@@ -862,10 +861,8 @@ const Home: React.FC = () => {
                           const y = activeH - (p.ingresos / maxChartVal) * activeH;
                           return (
                             <g key={`ing-${i}`} className="group cursor-pointer">
-                              {/* Línea vertical en Hover */}
                               <line x1={x} y1={y} x2={x} y2={activeH} stroke="#10b981" strokeWidth="1" strokeDasharray="3" className="opacity-0 group-hover:opacity-50 transition-opacity" />
                               <circle cx={x} cy={y} r="5" fill="#fff" stroke="#10b981" strokeWidth="3" className="transition-all duration-300 group-hover:r-[8px] shadow-lg" />
-                              {/* Tooltip Ingreso */}
                               <rect x={x - 30} y={y - 35} width="60" height="24" rx="6" fill="#10b981" className="opacity-0 group-hover:opacity-100 transition-opacity" />
                               <text x={x} y={y - 18} textAnchor="middle" fontSize="12" fill="#fff" fontWeight="bold" className="opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">${p.ingresos}</text>
                             </g>
@@ -887,7 +884,6 @@ const Home: React.FC = () => {
                           return (
                             <g key={`per-${i}`} className="group cursor-pointer">
                               <circle cx={x} cy={y} r="5" fill="#fff" stroke="#f43f5e" strokeWidth="3" className="transition-all duration-300 group-hover:r-[8px] shadow-lg" />
-                              {/* Tooltip Perdida */}
                               <rect x={x - 30} y={y + 15} width="60" height="24" rx="6" fill="#f43f5e" className="opacity-0 group-hover:opacity-100 transition-opacity" />
                               <text x={x} y={y + 32} textAnchor="middle" fontSize="12" fill="#fff" fontWeight="bold" className="opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">${p.perdidas}</text>
                             </g>
