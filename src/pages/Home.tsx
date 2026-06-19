@@ -24,7 +24,7 @@ interface ItemVenta {
   qtySold: number;
   date: string;
   tipoVenta: 'unidad' | 'mayoreo';
-  cobroTotal: number;
+  cobroTotal: number; 
 }
 
 interface ItemMerma {
@@ -68,7 +68,7 @@ const Home: React.FC = () => {
   const [ventaQty, setVentaQty] = useState('');
   const [ventaFecha, setVentaFecha] = useState(new Date().toISOString().split('T')[0]);
   const [tipoVenta, setTipoVenta] = useState<'unidad' | 'mayoreo'>('unidad'); 
-  const [cobroTotal, setCobroTotal] = useState('');
+  const [cobroTotal, setCobroTotal] = useState(''); // Se usará solo para mayoreo
 
   // Estados de Análisis y Temporada
   const [abcResult, setAbcResult] = useState<AbcResult | null>(null);
@@ -139,17 +139,27 @@ const Home: React.FC = () => {
         });
         setToastMessage("¡Merma registrada (Descontado del stock)!");
       } else {
-        if (!cobroTotal) {
-          setToastMessage("¡Error: Ingresa el cobro total de la venta!");
-          setShowToast(true);
-          return;
+        
+        // LÓGICA AUTOMÁTICA: Si es por unidad, calcula. Si es mayoreo, toma el valor escrito.
+        let cobroFinal = 0;
+        if (tipoVenta === 'unidad') {
+          const productoSeleccionado = inventario.find(p => p.id === ventaProductId);
+          cobroFinal = productoSeleccionado ? (parseInt(ventaQty) * productoSeleccionado.valor) : 0;
+        } else {
+          if (!cobroTotal) {
+            setToastMessage("¡Error: Ingresa el cobro total del mayoreo!");
+            setShowToast(true);
+            return;
+          }
+          cobroFinal = parseFloat(cobroTotal);
         }
+
         await addDoc(collection(db, 'ventas'), {
           productId: ventaProductId,
           qtySold: parseInt(ventaQty),
           date: ventaFecha,
           tipoVenta: tipoVenta,
-          cobroTotal: parseFloat(cobroTotal),
+          cobroTotal: cobroFinal, // Guarda el cobro calculado o el manual
           createdAt: serverTimestamp()
         });
         setToastMessage("¡Venta registrada con éxito!");
@@ -218,7 +228,6 @@ const Home: React.FC = () => {
 
     const targetWeek = getWeek(targetDateObj);
 
-    // Filtrar Ventas
     const filteredSales = ventas.filter(sale => {
       const [y, m, d] = sale.date.split('-').map(Number);
       const sDate = new Date(y, m - 1, d);
@@ -231,7 +240,6 @@ const Home: React.FC = () => {
       }
     });
 
-    // Filtrar Mermas
     const filteredMermas = mermas.filter(merma => {
       const [y, m, d] = merma.date.split('-').map(Number);
       const mDate = new Date(y, m - 1, d);
@@ -274,7 +282,6 @@ const Home: React.FC = () => {
       else if (seasonFilter === 'semana') idx = date.getDay();
       else idx = 1; 
 
-      // PARCHE PARA DATOS VIEJOS: Solo procesa finanzas si la venta tiene la nueva estructura
       if (sale.cobroTotal !== undefined) {
         chartPoints[idx].ingresos += sale.cobroTotal;
         sumIngresos += sale.cobroTotal;
@@ -506,10 +513,21 @@ const Home: React.FC = () => {
                           <option value="mayoreo">Por Mayoreo</option>
                         </select>
                       </div>
-                      <div>
-                        <label className="block text-sm font-bold text-emerald-600 mb-1.5 ml-1">Cobro Total (Ingreso)</label>
-                        <input type="number" step="0.01" required min="1" value={cobroTotal} onChange={e => setCobroTotal(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-emerald-50 border border-emerald-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-emerald-800 font-bold text-base" placeholder="$0.00" />
-                      </div>
+                      
+                      {/* LÓGICA DE COBRO (MANUAL O AUTOMÁTICA) */}
+                      {tipoVenta === 'mayoreo' ? (
+                        <div>
+                          <label className="block text-sm font-bold text-emerald-600 mb-1.5 ml-1">Cobro Total Lote</label>
+                          <input type="number" step="0.01" required min="1" value={cobroTotal} onChange={e => setCobroTotal(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-emerald-50 border border-emerald-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-emerald-800 font-bold text-base" placeholder="$0.00" />
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">Cobro Calculado</label>
+                          <div className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-slate-100/80 border border-slate-200 text-slate-600 font-bold text-base h-[54px] md:h-[58px] flex items-center shadow-inner">
+                            ${ventaProductId && ventaQty ? (parseInt(ventaQty) * (inventario.find(p => p.id === ventaProductId)?.valor || 0)).toLocaleString('es-MX', { minimumFractionDigits: 2 }) : '0.00'}
+                          </div>
+                        </div>
+                      )}
                     </>
                   ) : (
                     <div className="md:col-span-2">
