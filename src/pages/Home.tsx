@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { IonContent, IonPage, IonToast } from '@ionic/react';
 import { 
   Package, ArrowDownToLine, ArrowUpFromLine, BarChart3, 
-  CalendarDays, Plus, Play, AlertCircle, Search, Filter
+  CalendarDays, Plus, Play, AlertCircle, Search, Filter, TrendingUp, TrendingDown, DollarSign
 } from 'lucide-react';
 
 // Firebase
@@ -24,7 +24,7 @@ interface ItemVenta {
   qtySold: number;
   date: string;
   tipoVenta: 'unidad' | 'mayoreo';
-  precioMayoreo?: number; 
+  cobroTotal: number; // NUEVO: Reemplaza precioMayoreo para estandarizar ingresos
 }
 
 interface ItemMerma {
@@ -54,7 +54,7 @@ const Home: React.FC = () => {
   // Estados de Bases de Datos
   const [inventario, setInventario] = useState<ItemInventario[]>([]);
   const [ventas, setVentas] = useState<ItemVenta[]>([]);
-  const [mermas, setMermas] = useState<ItemMerma[]>([]); // NUEVO: Estado para Mermas
+  const [mermas, setMermas] = useState<ItemMerma[]>([]);
 
   // Estados de Formularios Recepción
   const [nombre, setNombre] = useState('');
@@ -63,12 +63,12 @@ const Home: React.FC = () => {
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   
   // Estados de Formularios Salidas
-  const [motivoSalida, setMotivoSalida] = useState<'venta' | 'merma'>('venta'); // NUEVO
+  const [motivoSalida, setMotivoSalida] = useState<'venta' | 'merma'>('venta');
   const [ventaProductId, setVentaProductId] = useState('');
   const [ventaQty, setVentaQty] = useState('');
   const [ventaFecha, setVentaFecha] = useState(new Date().toISOString().split('T')[0]);
   const [tipoVenta, setTipoVenta] = useState<'unidad' | 'mayoreo'>('unidad'); 
-  const [precioMayoreo, setPrecioMayoreo] = useState(''); 
+  const [cobroTotal, setCobroTotal] = useState(''); // UNIFICADO PARA INGRESOS
 
   // Estados de Análisis y Temporada
   const [abcResult, setAbcResult] = useState<AbcResult | null>(null);
@@ -131,18 +131,16 @@ const Home: React.FC = () => {
     
     try {
       if (motivoSalida === 'merma') {
-        // REGISTRAR MERMA
         await addDoc(collection(db, 'mermas'), {
           productId: ventaProductId,
           qtyDefective: parseInt(ventaQty),
           date: ventaFecha,
           createdAt: serverTimestamp()
         });
-        setToastMessage("¡Merma registrada (Inventario descontado)!");
+        setToastMessage("¡Merma registrada (Descontado del stock)!");
       } else {
-        // REGISTRAR VENTA
-        if (tipoVenta === 'mayoreo' && !precioMayoreo) {
-          setToastMessage("¡Error: Ingresa el cobro total del mayoreo!");
+        if (!cobroTotal) {
+          setToastMessage("¡Error: Ingresa el cobro total de la venta!");
           setShowToast(true);
           return;
         }
@@ -151,23 +149,22 @@ const Home: React.FC = () => {
           qtySold: parseInt(ventaQty),
           date: ventaFecha,
           tipoVenta: tipoVenta,
-          precioMayoreo: tipoVenta === 'mayoreo' ? parseFloat(precioMayoreo) : null,
+          cobroTotal: parseFloat(cobroTotal),
           createdAt: serverTimestamp()
         });
-        setToastMessage("¡Salida de venta registrada!");
+        setToastMessage("¡Venta registrada con éxito!");
       }
 
-      // Limpiar Formulario
       setVentaProductId(''); setVentaQty(''); setVentaFecha(new Date().toISOString().split('T')[0]);
-      setTipoVenta('unidad'); setPrecioMayoreo('');
+      setTipoVenta('unidad'); setCobroTotal('');
       setShowToast(true);
-      setAbcResult(null); // Limpiar ABC
+      setAbcResult(null); 
     } catch (error) {
       console.error(error);
     }
   };
 
-  // Función Calcular ABC (Ojo: Sólo usa VENTAS, la merma no genera valor)
+  // Función Calcular ABC
   const calculateABC = () => {
     const salesByProduct: Record<string, number> = {};
     ventas.forEach(sale => {
@@ -177,7 +174,7 @@ const Home: React.FC = () => {
     let totalGlobalValue = 0;
     const productsWithValue = inventario.map(prod => {
       const sold = salesByProduct[prod.id] || 0;
-      const usageValue = sold * prod.valor;
+      const usageValue = sold * prod.valor; // Se usa el valor de inventario para ponderar peso
       totalGlobalValue += usageValue;
       return { ...prod, sold, usageValue } as AbcItem; 
     });
@@ -205,11 +202,11 @@ const Home: React.FC = () => {
     setAbcResult(result);
   };
 
-  const getFilteredSeasonData = () => {
-    if (!seasonDate) return [];
-    const targetDate = new Date(seasonDate);
-    const tYear = targetDate.getFullYear();
-    const tMonth = targetDate.getMonth();
+  // ----- LÓGICA DE TEMPORADA Y GRÁFICAS -----
+  const getSeasonDataAndChart = () => {
+    if (!seasonDate) return { groupedData: [], chartLabels: [], chartPoints: [], summary: { ingresos: 0, mermas: 0, costo: 0 } };
+    const [tYear, tMonth, tDay] = seasonDate.split('-').map(Number);
+    const targetDateObj = new Date(tYear, tMonth - 1, tDay);
 
     const getWeek = (date: Date) => {
       const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
@@ -219,23 +216,35 @@ const Home: React.FC = () => {
       return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1)/7);
     };
 
-    const targetWeek = getWeek(targetDate);
+    const targetWeek = getWeek(targetDateObj);
 
-    // Solo contamos Ventas para el explorador
+    // Filtrar Ventas
     const filteredSales = ventas.filter(sale => {
-      const saleDate = new Date(sale.date);
-      saleDate.setMinutes(saleDate.getMinutes() + saleDate.getTimezoneOffset());
-      targetDate.setMinutes(targetDate.getMinutes() + targetDate.getTimezoneOffset());
-
+      const [y, m, d] = sale.date.split('-').map(Number);
+      const sDate = new Date(y, m - 1, d);
       switch (seasonFilter) {
-        case 'dia': return saleDate.getFullYear() === tYear && saleDate.getMonth() === tMonth && saleDate.getDate() === targetDate.getDate();
-        case 'semana': return saleDate.getFullYear() === tYear && getWeek(saleDate) === targetWeek;
-        case 'mes': return saleDate.getFullYear() === tYear && saleDate.getMonth() === tMonth;
-        case 'ano': return saleDate.getFullYear() === tYear;
+        case 'dia': return sDate.getFullYear() === tYear && sDate.getMonth() === tMonth - 1 && sDate.getDate() === tDay;
+        case 'semana': return sDate.getFullYear() === tYear && getWeek(sDate) === targetWeek;
+        case 'mes': return sDate.getFullYear() === tYear && sDate.getMonth() === tMonth - 1;
+        case 'ano': return sDate.getFullYear() === tYear;
         default: return true;
       }
     });
 
+    // Filtrar Mermas
+    const filteredMermas = mermas.filter(merma => {
+      const [y, m, d] = merma.date.split('-').map(Number);
+      const mDate = new Date(y, m - 1, d);
+      switch (seasonFilter) {
+        case 'dia': return mDate.getFullYear() === tYear && mDate.getMonth() === tMonth - 1 && mDate.getDate() === tDay;
+        case 'semana': return mDate.getFullYear() === tYear && getWeek(mDate) === targetWeek;
+        case 'mes': return mDate.getFullYear() === tYear && mDate.getMonth() === tMonth - 1;
+        case 'ano': return mDate.getFullYear() === tYear;
+        default: return true;
+      }
+    });
+
+    // Agrupar para lista de resultados
     const grouped: Record<string, { name: string, total: number }> = {};
     filteredSales.forEach(sale => {
       if (!grouped[sale.productId]) {
@@ -244,18 +253,69 @@ const Home: React.FC = () => {
       }
       grouped[sale.productId].total += sale.qtySold;
     });
-    return Object.values(grouped).sort((a, b) => b.total - a.total);
+
+    // PREPARAR GRÁFICA
+    let chartLabels: string[] = [];
+    if (seasonFilter === 'ano') chartLabels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    else if (seasonFilter === 'mes') chartLabels = ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4', 'Sem 5'];
+    else if (seasonFilter === 'semana') chartLabels = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    else chartLabels = ['Madrugada', 'Mañana', 'Tarde', 'Noche'];
+
+    const chartPoints = chartLabels.map(label => ({ label, ingresos: 0, perdidas: 0 }));
+    let sumIngresos = 0; let sumCostoVentas = 0; let sumMermas = 0;
+
+    // Poblar puntos de gráfica con Ventas
+    filteredSales.forEach(sale => {
+      const [y, m, d] = sale.date.split('-').map(Number);
+      const date = new Date(y, m - 1, d);
+      const prod = inventario.find(p => p.id === sale.productId);
+      const costoUnitario = prod ? prod.valor : 0;
+
+      let idx = 0;
+      if (seasonFilter === 'ano') idx = date.getMonth();
+      else if (seasonFilter === 'mes') idx = Math.min(Math.floor((date.getDate() - 1) / 7), 4);
+      else if (seasonFilter === 'semana') idx = date.getDay();
+      else idx = 1; // Para "dia", lo mandamos a un bloque general, ya que no guardamos hora exacta en la BD por ahora
+
+      chartPoints[idx].ingresos += (sale.cobroTotal || 0);
+      sumIngresos += (sale.cobroTotal || 0);
+      sumCostoVentas += (sale.qtySold * costoUnitario);
+    });
+
+    // Poblar puntos de gráfica con Mermas
+    filteredMermas.forEach(merma => {
+      const [y, m, d] = merma.date.split('-').map(Number);
+      const date = new Date(y, m - 1, d);
+      const prod = inventario.find(p => p.id === merma.productId);
+      const costoMerma = prod ? (prod.valor * merma.qtyDefective) : 0;
+
+      let idx = 0;
+      if (seasonFilter === 'ano') idx = date.getMonth();
+      else if (seasonFilter === 'mes') idx = Math.min(Math.floor((date.getDate() - 1) / 7), 4);
+      else if (seasonFilter === 'semana') idx = date.getDay();
+      else idx = 1;
+
+      chartPoints[idx].perdidas += costoMerma;
+      sumMermas += costoMerma;
+    });
+
+    return { 
+      groupedData: Object.values(grouped).sort((a, b) => b.total - a.total),
+      chartLabels, chartPoints, 
+      summary: { ingresos: sumIngresos, mermas: sumMermas, costo: sumCostoVentas }
+    };
   };
 
-  const seasonalData = getFilteredSeasonData();
+  const seasonData = getSeasonDataAndChart();
+  const maxChartVal = Math.max(...seasonData.chartPoints.map(p => Math.max(p.ingresos, p.perdidas)), 1);
 
-  // Historial Unificado para Mostrar en la Tabla de Salidas (Ordenado por Fecha)
+  // Historial Unificado
   const historialUnificado = [
     ...ventas.map(v => ({ ...v, tipoHistorial: 'venta' as const })),
     ...mermas.map(m => ({ ...m, tipoHistorial: 'merma' as const }))
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  // Calcular Inversión Total (Basado en el Stock Real Actual)
+  // Calcular Inversión Total del Stock Actual
   const inversionTotal = inventario.reduce((acc, item) => {
     const ventasTotales = ventas.filter(v => v.productId === item.id).reduce((sum, v) => sum + v.qtySold, 0);
     const mermasTotales = mermas.filter(m => m.productId === item.id).reduce((sum, m) => sum + m.qtyDefective, 0);
@@ -312,7 +372,7 @@ const Home: React.FC = () => {
                     <input type="number" required min="1" value={cantidad} onChange={e => setCantidad(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800 text-base" placeholder="0" />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Valor Unit.</label>
+                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Valor Unit. (Costo)</label>
                     <input type="number" step="0.01" required min="0" value={valor} onChange={e => setValor(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800 text-base" placeholder="$0.00" />
                   </div>
                   <div>
@@ -327,7 +387,7 @@ const Home: React.FC = () => {
                 </form>
               </div>
 
-              {/* TABLA RESPONSIVA DE INVENTARIO (CON STOCK ACTUAL Y MERMA) */}
+              {/* TABLA RESPONSIVA DE INVENTARIO */}
               <div className="bg-white/80 md:bg-white/70 backdrop-blur-xl rounded-[2rem] md:rounded-[2.5rem] shadow-xl border border-white/50 p-5 md:p-8">
                 
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 md:mb-6 ml-1 gap-3">
@@ -346,9 +406,9 @@ const Home: React.FC = () => {
                       <tr className="bg-slate-200/50 text-slate-600 text-sm font-bold uppercase tracking-wider rounded-t-2xl">
                         <th className="px-6 py-4 rounded-tl-2xl">Producto</th>
                         <th className="px-6 py-4">Ingresó</th>
-                        <th className="px-6 py-4 text-red-500">Fallidos</th>
+                        <th className="px-6 py-4 text-red-500">Mermas</th>
                         <th className="px-6 py-4 text-indigo-600">Stock Actual</th>
-                        <th className="px-6 py-4">V. Unit.</th>
+                        <th className="px-6 py-4">Costo Unit.</th>
                         <th className="px-6 py-4 rounded-tr-2xl">Inversión</th>
                       </tr>
                     </thead>
@@ -357,7 +417,6 @@ const Home: React.FC = () => {
                         <tr className="block md:table-row bg-white/50 md:bg-transparent rounded-2xl md:rounded-none"><td colSpan={6} className="px-4 py-8 text-center text-slate-400 font-medium text-sm">Sin inventario registrado</td></tr>
                       ) : (
                         inventario.map(item => {
-                          // Cálculos en tiempo real
                           const ventasItem = ventas.filter(v => v.productId === item.id).reduce((sum, v) => sum + v.qtySold, 0);
                           const mermasItem = mermas.filter(m => m.productId === item.id).reduce((sum, m) => sum + m.qtyDefective, 0);
                           const stockActual = item.cantidad - ventasItem - mermasItem;
@@ -382,7 +441,7 @@ const Home: React.FC = () => {
                                 <span className="text-right md:text-left">{stockActual.toLocaleString()}</span>
                               </td>
                               <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-slate-600 text-sm md:text-base border-b border-slate-200/60 md:border-none">
-                                <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">V. Unit.</span>
+                                <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Costo Unit.</span>
                                 <span className="text-right md:text-left">${item.valor?.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}</span>
                               </td>
                               <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-emerald-600 font-bold text-sm md:text-base">
@@ -411,17 +470,17 @@ const Home: React.FC = () => {
                 
                 <form onSubmit={guardarSalida} className="grid grid-cols-1 md:grid-cols-5 gap-4 md:gap-6 items-end">
                   
-                  {/* TIPO DE MOVIMIENTO (VENTA O MERMA) */}
+                  {/* TIPO DE MOVIMIENTO */}
                   <div className="md:col-span-5 bg-slate-100/50 p-4 rounded-2xl border border-slate-200 mb-2">
-                    <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">¿Qué tipo de salida es?</label>
+                    <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">¿Qué tipo de movimiento es?</label>
                     <div className="flex gap-4">
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input type="radio" value="venta" checked={motivoSalida === 'venta'} onChange={() => setMotivoSalida('venta')} className="w-4 h-4 text-emerald-600 focus:ring-emerald-500 border-slate-300" />
-                        <span className="text-slate-800 font-semibold">Venta (Comercial)</span>
+                        <span className="text-slate-800 font-semibold">Venta (Ingreso)</span>
                       </label>
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input type="radio" value="merma" checked={motivoSalida === 'merma'} onChange={() => setMotivoSalida('merma')} className="w-4 h-4 text-red-600 focus:ring-red-500 border-slate-300" />
-                        <span className="text-red-600 font-semibold">Merma (Defectuoso / Pérdida)</span>
+                        <span className="text-red-600 font-semibold">Merma (Pérdida / Defecto)</span>
                       </label>
                     </div>
                   </div>
@@ -441,7 +500,6 @@ const Home: React.FC = () => {
                     <input type="number" required min="1" value={ventaQty} onChange={e => setVentaQty(e.target.value)} className={`w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 outline-none transition-all shadow-inner text-slate-800 text-base focus:ring-4 ${motivoSalida === 'venta' ? 'focus:ring-emerald-100 focus:border-emerald-400' : 'focus:ring-red-100 focus:border-red-400'}`} placeholder="0" />
                   </div>
 
-                  {/* FORMULARIO DINÁMICO SEGÚN SI ES VENTA O MERMA */}
                   {motivoSalida === 'venta' ? (
                     <>
                       <div>
@@ -451,30 +509,22 @@ const Home: React.FC = () => {
                           <option value="mayoreo">Por Mayoreo</option>
                         </select>
                       </div>
-
-                      {tipoVenta === 'mayoreo' ? (
-                        <div>
-                          <label className="block text-sm font-bold text-emerald-600 mb-1.5 ml-1">Cobro Total Lote</label>
-                          <input type="number" step="0.01" required min="1" value={precioMayoreo} onChange={e => setPrecioMayoreo(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-emerald-50 border border-emerald-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-emerald-800 font-bold text-base" placeholder="$0.00" />
-                        </div>
-                      ) : (
-                        <div>
-                          <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Fecha de Salida</label>
-                          <input type="date" required value={ventaFecha} onChange={e => setVentaFecha(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-slate-800 text-base" />
-                        </div>
-                      )}
+                      {/* CAMPO DE COBRO OBLIGATORIO PARA TODAS LAS VENTAS */}
+                      <div>
+                        <label className="block text-sm font-bold text-emerald-600 mb-1.5 ml-1">Cobro Total (Ingreso)</label>
+                        <input type="number" step="0.01" required min="1" value={cobroTotal} onChange={e => setCobroTotal(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-emerald-50 border border-emerald-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-emerald-800 font-bold text-base" placeholder="$0.00" />
+                      </div>
                     </>
                   ) : (
-                    // SI ES MERMA, SÓLO PIDE FECHA (Ocupando más espacio)
+                    // MERMA NO TIENE COBRO
                     <div className="md:col-span-2">
-                      <label className="block text-sm font-semibold text-red-600 mb-1.5 ml-1">Fecha del Descuento</label>
+                      <label className="block text-sm font-semibold text-red-600 mb-1.5 ml-1">Fecha de la Baja</label>
                       <input type="date" required value={ventaFecha} onChange={e => setVentaFecha(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-red-50 border border-red-200 focus:ring-4 focus:ring-red-100 focus:border-red-400 outline-none transition-all shadow-inner text-red-800 font-bold text-base" />
                     </div>
                   )}
 
                   <div className="md:col-span-5 flex flex-col md:flex-row justify-between items-center mt-4">
-                    {/* Input extra de fecha para alinear en Mayoreo */}
-                    {motivoSalida === 'venta' && tipoVenta === 'mayoreo' ? (
+                    {motivoSalida === 'venta' ? (
                       <div className="w-full md:w-auto mb-4 md:mb-0 md:flex-1 md:max-w-xs">
                         <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Fecha de Salida</label>
                         <input type="date" required value={ventaFecha} onChange={e => setVentaFecha(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-slate-800 text-base" />
@@ -489,7 +539,7 @@ const Home: React.FC = () => {
                 </form>
               </div>
 
-              {/* TABLA RESPONSIVA DE HISTORIAL (Muestra Ventas y Mermas) */}
+              {/* TABLA HISTORIAL UNIFICADO */}
               <div className="bg-white/80 md:bg-white/70 backdrop-blur-xl rounded-[2rem] md:rounded-[2.5rem] shadow-xl border border-white/50 p-5 md:p-8">
                 <h3 className="text-lg md:text-xl font-bold text-slate-800 mb-4 ml-1">Historial de Movimientos</h3>
                 
@@ -499,7 +549,7 @@ const Home: React.FC = () => {
                       <tr className="bg-slate-200/50 text-slate-600 text-sm font-bold uppercase tracking-wider rounded-t-2xl">
                         <th className="px-6 py-4 rounded-tl-2xl">Fecha</th>
                         <th className="px-6 py-4">Producto</th>
-                        <th className="px-6 py-4">Modalidad</th>
+                        <th className="px-6 py-4">Movimiento</th>
                         <th className="px-6 py-4 rounded-tr-2xl">Volumen</th>
                       </tr>
                     </thead>
@@ -524,17 +574,20 @@ const Home: React.FC = () => {
                               </td>
                               
                               <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-slate-600 text-sm md:text-base border-b border-slate-200/60 md:border-none">
-                                <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Modalidad</span>
+                                <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Movimiento</span>
                                 <div className="text-right md:text-left flex flex-col md:block">
                                   {esMerma ? (
                                     <span className="bg-red-100 text-red-700 text-xs px-2 py-0.5 rounded-md font-bold">MERMA</span>
                                   ) : mov.tipoVenta === 'mayoreo' ? (
                                     <>
-                                      <span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-md font-bold mb-1 md:mb-0 md:mr-2">MAYOREO</span>
-                                      <span className="font-semibold text-emerald-600">${mov.precioMayoreo?.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+                                      <span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-md font-bold mb-1 md:mb-0 md:mr-2">VENTA MAYOREO</span>
+                                      <span className="font-semibold text-emerald-600">+ ${mov.cobroTotal?.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
                                     </>
                                   ) : (
-                                    <span className="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-md font-bold">UNIDAD (VENTA)</span>
+                                    <>
+                                      <span className="bg-emerald-100 text-emerald-700 text-xs px-2 py-0.5 rounded-md font-bold mb-1 md:mb-0 md:mr-2">VENTA UNIDAD</span>
+                                      <span className="font-semibold text-emerald-600">+ ${mov.cobroTotal?.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+                                    </>
                                   )}
                                 </div>
                               </td>
@@ -592,7 +645,7 @@ const Home: React.FC = () => {
                           <div key={p.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center">
                             <div className="overflow-hidden mr-2">
                               <p className="font-bold text-slate-800 text-sm truncate">{p.nombre}</p>
-                              <p className="text-xs text-slate-500 mt-0.5">Uso: ${(p as any).usageValue?.toLocaleString('es-MX')}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">Valor Ponderado: ${(p as any).usageValue?.toLocaleString('es-MX')}</p>
                             </div>
                             <span className="text-sm font-black text-emerald-500">{p.percentage}%</span>
                           </div>
@@ -616,7 +669,7 @@ const Home: React.FC = () => {
                           <div key={p.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center">
                             <div className="overflow-hidden mr-2">
                               <p className="font-bold text-slate-800 text-sm truncate">{p.nombre}</p>
-                              <p className="text-xs text-slate-500 mt-0.5">Uso: ${(p as any).usageValue?.toLocaleString('es-MX')}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">Valor Ponderado: ${(p as any).usageValue?.toLocaleString('es-MX')}</p>
                             </div>
                             <span className="text-sm font-black text-amber-500">{p.percentage}%</span>
                           </div>
@@ -640,7 +693,7 @@ const Home: React.FC = () => {
                           <div key={p.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center">
                             <div className="overflow-hidden mr-2">
                               <p className="font-bold text-slate-800 text-sm truncate">{p.nombre}</p>
-                              <p className="text-xs text-slate-500 mt-0.5">Uso: ${(p as any).usageValue?.toLocaleString('es-MX')}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">Valor Ponderado: ${(p as any).usageValue?.toLocaleString('es-MX')}</p>
                             </div>
                             <span className="text-sm font-black text-slate-500">{p.percentage}%</span>
                           </div>
@@ -653,44 +706,108 @@ const Home: React.FC = () => {
             </div>
           )}
 
-          {/* VISTA 4: TEMPORADA */}
+          {/* VISTA 4: TEMPORADA CON GRÁFICAS FINANCIERAS */}
           {activeTab === 'temporada' && (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-5 md:space-y-6">
+              
               <div className="bg-white/80 md:bg-white/70 backdrop-blur-xl rounded-[2rem] md:rounded-[2.5rem] shadow-xl border border-white/50 p-5 md:p-8">
                 <h2 className="text-xl md:text-2xl font-bold text-slate-800 mb-5 flex items-center">
                   <span className="bg-purple-100 text-purple-600 p-2 rounded-xl mr-3"><Filter size={20} /></span>
-                  Explorador
+                  Rendimiento Financiero
                 </h2>
                 
+                {/* FILTROS */}
                 <div className="flex flex-col md:flex-row gap-4 mb-8 bg-white/60 md:bg-white/50 p-5 md:p-6 rounded-[1.5rem] border border-white shadow-inner">
                   <div className="flex-1">
-                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Fecha</label>
+                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Fecha a Analizar</label>
                     <input type="date" value={seasonDate} onChange={e => setSeasonDate(e.target.value)} className="w-full px-4 py-3.5 rounded-xl bg-white border border-slate-200 focus:ring-4 focus:ring-purple-100 outline-none text-base" />
                   </div>
                   <div className="flex-1">
-                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Filtro</label>
+                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Vista de Gráfica</label>
                     <select value={seasonFilter} onChange={e => setSeasonFilter(e.target.value)} className="w-full px-4 py-3.5 rounded-xl bg-white border border-slate-200 focus:ring-4 focus:ring-purple-100 outline-none text-base font-medium">
                       <option value="dia">Día exacto</option>
-                      <option value="semana">Esa semana</option>
-                      <option value="mes">Ese mes</option>
-                      <option value="ano">Ese año</option>
+                      <option value="semana">Por Semana</option>
+                      <option value="mes">Por Mes</option>
+                      <option value="ano">Por Año</option>
                     </select>
                   </div>
                 </div>
 
+                {/* TARJETAS DE RESUMEN FINANCIERO */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                  <div className="bg-emerald-50 border border-emerald-100 p-5 rounded-2xl shadow-sm">
+                    <div className="flex items-center text-emerald-600 mb-1"><TrendingUp size={16} className="mr-1"/> <span className="font-bold text-sm">Ingresos Brutos</span></div>
+                    <p className="text-2xl font-black text-slate-800">${seasonData.summary.ingresos.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+                  </div>
+                  <div className="bg-red-50 border border-red-100 p-5 rounded-2xl shadow-sm">
+                    <div className="flex items-center text-red-600 mb-1"><TrendingDown size={16} className="mr-1"/> <span className="font-bold text-sm">Pérdidas (Mermas)</span></div>
+                    <p className="text-2xl font-black text-slate-800">${seasonData.summary.mermas.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+                  </div>
+                  <div className="bg-indigo-50 border border-indigo-100 p-5 rounded-2xl shadow-sm relative overflow-hidden">
+                    <div className="flex items-center text-indigo-600 mb-1"><DollarSign size={16} className="mr-1"/> <span className="font-bold text-sm">Ganancia Neta</span></div>
+                    <p className="text-2xl font-black text-slate-800">
+                      ${(seasonData.summary.ingresos - seasonData.summary.costo - seasonData.summary.mermas).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs text-indigo-500/70 mt-1 font-medium leading-tight">Ingresos - (Costo de venta + Mermas)</p>
+                  </div>
+                </div>
+
+                {/* GRÁFICA CSS PERSONALIZADA (GLASSMORPHISM) */}
+                <div className="bg-slate-50/50 rounded-3xl border border-slate-200/60 p-4 md:p-6 mb-10 overflow-x-auto">
+                  <div className="min-w-[500px]">
+                    <div className="flex justify-between items-center mb-6">
+                      <h3 className="font-bold text-slate-700">Comportamiento en el periodo</h3>
+                      <div className="flex gap-4 text-xs font-bold">
+                        <span className="flex items-center text-emerald-600"><div className="w-3 h-3 rounded-full bg-emerald-400 mr-1"></div> Ingresos</span>
+                        <span className="flex items-center text-red-500"><div className="w-3 h-3 rounded-full bg-red-400 mr-1"></div> Pérdidas</span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-end justify-around h-48 w-full gap-2 border-b-2 border-slate-200 pb-2">
+                      {seasonData.chartPoints.map((point, idx) => {
+                        const hIngreso = (point.ingresos / maxChartVal) * 100;
+                        const hPerdida = (point.perdidas / maxChartVal) * 100;
+                        
+                        return (
+                          <div key={idx} className="flex flex-col items-center w-full group relative">
+                            <div className="flex items-end justify-center w-full h-40 gap-1 md:gap-1.5">
+                              {/* Barra Ingresos */}
+                              <div 
+                                className="w-3 md:w-6 bg-gradient-to-t from-emerald-500 to-teal-400 rounded-t-md transition-all duration-700 ease-out shadow-sm relative" 
+                                style={{ height: `${Math.max(hIngreso, 0)}%`, minHeight: point.ingresos > 0 ? '4px' : '0px' }}
+                              >
+                                {point.ingresos > 0 && <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-[9px] font-bold text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">${point.ingresos}</span>}
+                              </div>
+                              {/* Barra Pérdidas */}
+                              <div 
+                                className="w-3 md:w-6 bg-gradient-to-t from-red-500 to-rose-400 rounded-t-md transition-all duration-700 ease-out shadow-sm relative" 
+                                style={{ height: `${Math.max(hPerdida, 0)}%`, minHeight: point.perdidas > 0 ? '4px' : '0px' }}
+                              >
+                                {point.perdidas > 0 && <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-[9px] font-bold text-red-500 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">${point.perdidas}</span>}
+                              </div>
+                            </div>
+                            <span className="text-[10px] md:text-xs font-bold text-slate-500 mt-3 truncate max-w-full">{point.label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* PRODUCTOS MÁS MOVIDOS */}
                 <div>
                   <h3 className="text-base font-bold text-slate-700 mb-4 ml-1 flex items-center">
-                    <Search size={18} className="mr-2 text-purple-500" /> Resultados
+                    <Search size={18} className="mr-2 text-purple-500" /> Productos más vendidos
                   </h3>
                   
-                  {seasonalData.length === 0 ? (
+                  {seasonData.groupedData.length === 0 ? (
                     <div className="text-center py-10 bg-white/50 rounded-[1.5rem] border border-dashed border-slate-300">
                       <AlertCircle className="mx-auto h-10 w-10 text-slate-300 mb-2" />
-                      <p className="text-slate-500 text-sm">No hay ventas registradas.</p>
+                      <p className="text-slate-500 text-sm">No hay ventas registradas en esta fecha.</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {seasonalData.map((item, index) => (
+                      {seasonData.groupedData.map((item, index) => (
                         <div key={index} className="bg-white/90 backdrop-blur-md p-5 rounded-[1.5rem] border border-white shadow-lg flex items-center justify-between">
                           <div className="flex items-center space-x-3 overflow-hidden mr-2">
                             <div className="bg-purple-100 p-2.5 rounded-xl text-purple-600 flex-shrink-0">
@@ -724,7 +841,6 @@ const Home: React.FC = () => {
   );
 };
 
-// Componente: Botón de navegación responsivo (Menos padding y texto de 10px en móvil, regular en escritorio)
 const NavButton = ({ active, onClick, icon, children }: any) => (
   <button
     onClick={onClick}
