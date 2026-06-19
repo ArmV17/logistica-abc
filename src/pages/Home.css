@@ -1,0 +1,77 @@
+/* =========================================
+   Home.css - Estilos y Modo Oscuro Global
+   ========================================= */
+
+/* 1. Forzar a Ionic a ser transparente para ver nuestro fondo */
+ion-content {
+  --background: transparent !important;
+  --ion-background-color: transparent !important;
+}
+
+/* 2. Colores base de la pantalla completa */
+.app-container {
+  min-height: 100vh;
+  background-color: #f0f4fb;
+  transition: background-color 0.5s ease;
+  position: relative;
+  z-index: 1;
+}
+
+/* 3. Colores cuando el Modo Oscuro está activo */
+html.dark .app-container {
+  background-color: #0f172a; /* Slate 900 de Tailwind */
+}
+
+/* 4. Sistema de Burbujas de Fondo (Blobs) */
+.blob-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.3;
+  mix-blend-mode: multiply;
+  animation: float 10s infinite ease-in-out alternate;
+  transition: all 0.5s ease;
+}
+
+html.dark .blob {
+  opacity: 0.15;
+  mix-blend-mode: screen; /* Brillo para el modo noche */
+}
+
+/* Posiciones y colores de las burbujas */
+.blob-1 {
+  top: -10%; left: -10%; width: 24rem; height: 24rem;
+  background-color: #93c5fd; /* Azul */
+}
+html.dark .blob-1 { background-color: #1e3a8a; }
+
+.blob-2 {
+  top: 20%; right: -10%; width: 24rem; height: 24rem;
+  background-color: #d8b4fe; /* Morado */
+  animation-delay: 2s;
+}
+html.dark .blob-2 { background-color: #581c87; }
+
+.blob-3 {
+  bottom: -20%; left: 20%; width: 30rem; height: 30rem;
+  background-color: #6ee7b7; /* Esmeralda */
+  animation-delay: 4s;
+}
+html.dark .blob-3 { background-color: #064e3b; }
+
+/* Animación de flotación suave */
+@keyframes float {
+  0% { transform: translateY(0px) scale(1); }
+  100% { transform: translateY(-20px) scale(1.05); }
+}
