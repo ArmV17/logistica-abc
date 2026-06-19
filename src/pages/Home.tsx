@@ -241,6 +241,7 @@ const Home: React.FC = () => {
           <div className="flex flex-col items-center mb-6 md:mb-10 space-y-4 md:space-y-6 w-full">
             <div className="flex items-center space-x-3 bg-white/80 md:bg-white/60 backdrop-blur-xl px-6 py-3 rounded-full border border-white/40 shadow-sm w-fit justify-center">
               <Package className="h-6 w-6 md:h-7 md:w-7 text-blue-600 flex-shrink-0" />
+              <link rel="shortcut icon" type="image/png" href="/Logo.png" />
               <span className="font-extrabold text-xl md:text-2xl tracking-tight text-slate-800">
                 Make<span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">ABC</span>
               </span>
