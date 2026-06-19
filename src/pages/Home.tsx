@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { IonContent, IonPage, IonToast } from '@ionic/react';
 import { 
   Package, ArrowDownToLine, ArrowUpFromLine, BarChart3, 
-  CalendarDays, Plus, Play, AlertCircle, Search, Filter, TrendingUp, TrendingDown, DollarSign
+  CalendarDays, Plus, Play, AlertCircle, Search, Filter, TrendingUp, TrendingDown, DollarSign, Tags
 } from 'lucide-react';
 
 // Firebase
@@ -13,10 +13,11 @@ import { db } from '../firebase';
 interface ItemInventario {
   id: string;
   nombre: string;
+  categoria?: string; // NUEVA CATEGORÍA
   cantidad: number;
-  valor: number; // Internamente lo usamos como Precio de Compra
-  precioMenudeo?: number; // Precio Unitario
-  precioMayoreo?: number; // Precio por Mayoreo
+  valor: number; 
+  precioMenudeo?: number; 
+  precioMayoreo?: number; 
   fechaLlegada: string;
 }
 
@@ -60,6 +61,7 @@ const Home: React.FC = () => {
 
   // Estados de Formularios Recepción
   const [nombre, setNombre] = useState('');
+  const [categoria, setCategoria] = useState(''); // Estado para la categoría
   const [cantidad, setCantidad] = useState('');
   const [precioCompra, setPrecioCompra] = useState(''); 
   const [precioMenudeo, setPrecioMenudeo] = useState(''); 
@@ -68,6 +70,7 @@ const Home: React.FC = () => {
   
   // Estados de Formularios Salidas
   const [motivoSalida, setMotivoSalida] = useState<'venta' | 'merma'>('venta');
+  const [ventaCategoriaFiltro, setVentaCategoriaFiltro] = useState(''); // Filtro de Categoría
   const [ventaProductId, setVentaProductId] = useState('');
   const [ventaQty, setVentaQty] = useState('');
   const [ventaFecha, setVentaFecha] = useState(new Date().toISOString().split('T')[0]);
@@ -111,19 +114,20 @@ const Home: React.FC = () => {
   // Función Guardar Mercancía 
   const guardarMercancia = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nombre || !cantidad || !precioCompra || !precioMenudeo || !precioMayoreoInv || !fecha) return;
+    if (!nombre || !cantidad || !precioCompra || !precioMenudeo || !precioMayoreoInv || !fecha || !categoria) return;
     try {
       await addDoc(collection(db, 'inventario'), {
         nombre,
+        categoria, // Se guarda la categoría
         cantidad: parseInt(cantidad),
-        valor: parseFloat(precioCompra), // Costo de compra unitario
-        precioMenudeo: parseFloat(precioMenudeo), // Precio al que vendes por pieza
-        precioMayoreo: parseFloat(precioMayoreoInv), // Precio al que vendes por volumen
+        valor: parseFloat(precioCompra), 
+        precioMenudeo: parseFloat(precioMenudeo), 
+        precioMayoreo: parseFloat(precioMayoreoInv), 
         fechaLlegada: fecha,
         createdAt: serverTimestamp()
       });
 
-      setNombre(''); setCantidad(''); setPrecioCompra(''); setPrecioMenudeo(''); setPrecioMayoreoInv(''); setFecha(new Date().toISOString().split('T')[0]);
+      setNombre(''); setCategoria(''); setCantidad(''); setPrecioCompra(''); setPrecioMenudeo(''); setPrecioMayoreoInv(''); setFecha(new Date().toISOString().split('T')[0]);
       setToastMessage("¡Mercancía registrada con éxito!");
       setShowToast(true);
     } catch (error) {
@@ -146,7 +150,6 @@ const Home: React.FC = () => {
         });
         setToastMessage("¡Merma registrada (Descontado del stock)!");
       } else {
-        // CÁLCULO AUTOMÁTICO SEGÚN TIPO DE VENTA (UNIDAD O MAYOREO)
         let cobroFinal = 0;
         const prodSeleccionado = inventario.find(p => p.id === ventaProductId);
         
@@ -154,7 +157,6 @@ const Home: React.FC = () => {
           const precioVenta = prodSeleccionado?.precioMenudeo || prodSeleccionado?.valor || 0;
           cobroFinal = parseInt(ventaQty) * precioVenta;
         } else {
-          // Si eligió mayoreo, usa el precio de mayoreo. Si el producto viejo no lo tiene, usa el de menudeo.
           const precioMayoreoBD = prodSeleccionado?.precioMayoreo || prodSeleccionado?.precioMenudeo || prodSeleccionado?.valor || 0;
           cobroFinal = parseInt(ventaQty) * precioMayoreoBD;
         }
@@ -178,6 +180,25 @@ const Home: React.FC = () => {
       console.error(error);
     }
   };
+
+  // Lógica Filtrado de Stock para Vistas
+  const inventarioConStockVisual = inventario.map(item => {
+    const vTotales = ventas.filter(v => v.productId === item.id).reduce((s, v) => s + v.qtySold, 0);
+    const mTotales = mermas.filter(m => m.productId === item.id).reduce((s, m) => s + m.qtyDefective, 0);
+    return { ...item, stockReal: item.cantidad - vTotales - mTotales };
+  });
+
+  // Solo productos que tengan al menos 1 pieza en stock
+  const productosDisponibles = inventarioConStockVisual.filter(item => item.stockReal > 0);
+  
+  // Extraer las categorías únicas que actualmente tienen stock
+  const categoriasUnicas = Array.from(new Set(productosDisponibles.map(i => i.categoria || 'General')));
+
+  // Aplicar el filtro seleccionado por el usuario en Salidas
+  const productosFiltradosParaSalida = ventaCategoriaFiltro 
+    ? productosDisponibles.filter(i => (i.categoria || 'General') === ventaCategoriaFiltro)
+    : productosDisponibles;
+
 
   // Función Calcular ABC
   const calculateABC = () => {
@@ -333,7 +354,7 @@ const Home: React.FC = () => {
     return acc + (stockReal > 0 ? stockReal * item.valor : 0);
   }, 0);
 
-  // ---------- CÁLCULO DE COORDENADAS PARA GRÁFICA TIPO INVERSIÓN ----------
+  // ---------- CÁLCULO DE COORDENADAS PARA GRÁFICA ----------
   const svgWidth = 800;
   const svgHeight = 220;
   const paddingX = 40; 
@@ -398,6 +419,21 @@ const Home: React.FC = () => {
                     <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Nombre del Producto</label>
                     <input type="text" required value={nombre} onChange={e => setNombre(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800 text-base" placeholder="Ej. Base Líquida" />
                   </div>
+                  
+                  {/* NUEVA CASILLA CATEGORÍA */}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1 flex items-center">
+                      <Tags size={14} className="mr-1 text-slate-400" /> Categoría
+                    </label>
+                    <input type="text" required value={categoria} onChange={e => setCategoria(e.target.value)} list="lista-categorias" className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800 text-base" placeholder="Ej. Labiales, Rubor..." />
+                    {/* Autocompletar con categorías existentes */}
+                    <datalist id="lista-categorias">
+                      {Array.from(new Set(inventario.map(i => i.categoria).filter(Boolean))).map(cat => (
+                        <option key={cat} value={cat} />
+                      ))}
+                    </datalist>
+                  </div>
+
                   <div className="md:col-span-1">
                     <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Total de Piezas</label>
                     <input type="number" required min="1" value={cantidad} onChange={e => setCantidad(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800 text-base" placeholder="0" />
@@ -406,6 +442,8 @@ const Home: React.FC = () => {
                     <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Precio de Compra</label>
                     <input type="number" step="0.01" required min="0" value={precioCompra} onChange={e => setPrecioCompra(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800 text-base" placeholder="$0.00" />
                   </div>
+
+                  {/* SEGUNDA FILA */}
                   <div className="md:col-span-1">
                     <label className="block text-sm font-semibold text-emerald-600 mb-1.5 ml-1">Precio Unitario</label>
                     <input type="number" step="0.01" required min="0" value={precioMenudeo} onChange={e => setPrecioMenudeo(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-emerald-50 border border-emerald-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-emerald-800 font-bold text-base" placeholder="$0.00" />
@@ -414,15 +452,13 @@ const Home: React.FC = () => {
                     <label className="block text-sm font-semibold text-purple-600 mb-1.5 ml-1">Precio Mayoreo</label>
                     <input type="number" step="0.01" required min="0" value={precioMayoreoInv} onChange={e => setPrecioMayoreoInv(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-purple-50 border border-purple-200 focus:ring-4 focus:ring-purple-100 focus:border-purple-400 outline-none transition-all shadow-inner text-purple-800 font-bold text-base" placeholder="$0.00" />
                   </div>
-
-                  {/* SEGUNDA FILA */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Fecha de Registro</label>
                     <input type="date" required value={fecha} onChange={e => setFecha(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800 text-base" />
                   </div>
-                  <div className="md:col-span-4 flex justify-end mt-2">
-                    <button type="submit" className="w-full md:w-auto flex items-center justify-center px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl hover:scale-105 transition-all shadow-lg hover:shadow-blue-500/30 font-bold tracking-wide text-base">
-                      <Plus size={20} className="mr-2" /> Agregar a Firebase
+                  <div className="md:col-span-2 flex justify-end mt-2">
+                    <button type="submit" className="w-full md:w-full flex items-center justify-center px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl hover:scale-105 transition-all shadow-lg hover:shadow-blue-500/30 font-bold tracking-wide text-base">
+                      <Plus size={20} className="mr-2" /> Registrar
                     </button>
                   </div>
                 </form>
@@ -471,7 +507,11 @@ const Home: React.FC = () => {
                             <tr key={item.id} className="block md:table-row bg-white/70 md:bg-white/40 md:hover:bg-white/60 transition-colors rounded-[1.5rem] md:rounded-none p-4 md:p-0 shadow-sm md:shadow-none border border-white md:border-b md:border-slate-100">
                               <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 font-semibold text-slate-800 text-sm md:text-base border-b border-slate-200/60 md:border-none">
                                 <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Producto</span>
-                                <span className="text-right md:text-left truncate max-w-[150px] md:max-w-none">{item.nombre}</span>
+                                <div className="text-right md:text-left flex flex-col md:block">
+                                  <span className="truncate max-w-[150px] md:max-w-none">{item.nombre}</span>
+                                  {/* Mostrar insignia de la categoría */}
+                                  <span className="bg-slate-100 text-slate-500 text-[10px] px-2 py-0.5 rounded-md mt-1 inline-block w-fit font-bold uppercase ml-auto md:ml-0 md:block">{item.categoria || 'General'}</span>
+                                </div>
                               </td>
                               <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-slate-500 text-sm md:text-base border-b border-slate-200/60 md:border-none">
                                 <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Ingresó</span>
@@ -537,33 +577,45 @@ const Home: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* NUEVO FILTRO DE CATEGORÍA */}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Filtrar por Categoría</label>
+                    <select value={ventaCategoriaFiltro} onChange={e => { setVentaCategoriaFiltro(e.target.value); setVentaProductId(''); }} className={`w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 outline-none transition-all shadow-inner text-slate-800 font-medium text-base focus:ring-4 ${motivoSalida === 'venta' ? 'focus:ring-emerald-100 focus:border-emerald-400' : 'focus:ring-red-100 focus:border-red-400'}`}>
+                      <option value="">Todas las Categorías</option>
+                      {categoriasUnicas.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Seleccionar Producto</label>
                     <select required value={ventaProductId} onChange={e => setVentaProductId(e.target.value)} className={`w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 outline-none transition-all shadow-inner text-slate-800 font-medium text-base focus:ring-4 ${motivoSalida === 'venta' ? 'focus:ring-emerald-100 focus:border-emerald-400' : 'focus:ring-red-100 focus:border-red-400'}`}>
                       <option value="">Selecciona del inventario...</option>
-                      {inventario.map(item => {
-                        const stock = item.cantidad - ventas.filter(v => v.productId === item.id).reduce((s, v) => s + v.qtySold, 0) - mermas.filter(m => m.productId === item.id).reduce((s, m) => s + m.qtyDefective, 0);
-                        return <option key={item.id} value={item.id}>{item.nombre} (Stock: {stock})</option>
-                      })}
+                      {/* SOLO MUESTRA LOS FILTRADOS QUE TIENEN STOCK > 0 */}
+                      {productosFiltradosParaSalida.map(item => (
+                         <option key={item.id} value={item.id}>{item.nombre} (Stock: {item.stockReal})</option>
+                      ))}
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Cantidad a Retirar</label>
+                  
+                  <div className="md:col-span-1">
+                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Cantidad</label>
                     <input type="number" required min="1" value={ventaQty} onChange={e => setVentaQty(e.target.value)} className={`w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 outline-none transition-all shadow-inner text-slate-800 text-base focus:ring-4 ${motivoSalida === 'venta' ? 'focus:ring-emerald-100 focus:border-emerald-400' : 'focus:ring-red-100 focus:border-red-400'}`} placeholder="0" />
                   </div>
 
                   {motivoSalida === 'venta' ? (
                     <>
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Tipo de Venta</label>
+                      <div className="md:col-span-1">
+                        <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Tipo Venta</label>
                         <select value={tipoVenta} onChange={e => setTipoVenta(e.target.value as any)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-slate-800 font-medium text-base">
-                          <option value="unidad">Por Unidad</option>
-                          <option value="mayoreo">Por Mayoreo</option>
+                          <option value="unidad">Unidad</option>
+                          <option value="mayoreo">Mayoreo</option>
                         </select>
                       </div>
                       
-                      <div>
-                        <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">Cobro Automático</label>
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">Ingreso Automático</label>
                         <div className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-slate-100/80 border border-slate-200 text-emerald-700 font-bold text-base h-[54px] md:h-[58px] flex items-center shadow-inner">
                           ${ventaProductId && ventaQty ? (
                             parseInt(ventaQty) * (tipoVenta === 'unidad' 
@@ -573,22 +625,20 @@ const Home: React.FC = () => {
                           ).toLocaleString('es-MX', { minimumFractionDigits: 2 }) : '0.00'}
                         </div>
                       </div>
+
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Fecha de Salida</label>
+                        <input type="date" required value={ventaFecha} onChange={e => setVentaFecha(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-slate-800 text-base" />
+                      </div>
                     </>
                   ) : (
-                    <div className="md:col-span-2">
+                    <div className="md:col-span-5">
                       <label className="block text-sm font-semibold text-red-600 mb-1.5 ml-1">Fecha de la Baja</label>
                       <input type="date" required value={ventaFecha} onChange={e => setVentaFecha(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-red-50 border border-red-200 focus:ring-4 focus:ring-red-100 focus:border-red-400 outline-none transition-all shadow-inner text-red-800 font-bold text-base" />
                     </div>
                   )}
 
-                  <div className="md:col-span-5 flex flex-col md:flex-row justify-between items-center mt-4">
-                    {motivoSalida === 'venta' ? (
-                      <div className="w-full md:w-auto mb-4 md:mb-0 md:flex-1 md:max-w-xs">
-                        <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Fecha de Salida</label>
-                        <input type="date" required value={ventaFecha} onChange={e => setVentaFecha(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-slate-800 text-base" />
-                      </div>
-                    ) : (<div></div>)}
-
+                  <div className="md:col-span-5 flex justify-end mt-2">
                     <button type="submit" className={`w-full md:w-auto flex items-center justify-center px-8 py-4 text-white rounded-2xl hover:scale-105 transition-all shadow-lg font-bold tracking-wide text-base ${motivoSalida === 'venta' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:shadow-emerald-500/30' : 'bg-gradient-to-r from-red-500 to-rose-600 hover:shadow-red-500/30'}`}>
                       <Plus size={20} className="mr-2" /> 
                       {motivoSalida === 'venta' ? 'Registrar Venta' : 'Dar de Baja (Merma)'}
