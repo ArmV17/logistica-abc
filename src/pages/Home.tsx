@@ -23,8 +23,15 @@ interface ItemVenta {
   productId: string;
   qtySold: number;
   date: string;
-  tipoVenta: 'unidad' | 'mayoreo'; // NUEVO
-  precioMayoreo?: number; // NUEVO
+  tipoVenta: 'unidad' | 'mayoreo';
+  precioMayoreo?: number; 
+}
+
+interface ItemMerma {
+  id: string;
+  productId: string;
+  qtyDefective: number;
+  date: string;
 }
 
 interface AbcItem extends ItemInventario {
@@ -47,6 +54,7 @@ const Home: React.FC = () => {
   // Estados de Bases de Datos
   const [inventario, setInventario] = useState<ItemInventario[]>([]);
   const [ventas, setVentas] = useState<ItemVenta[]>([]);
+  const [mermas, setMermas] = useState<ItemMerma[]>([]); // NUEVO: Estado para Mermas
 
   // Estados de Formularios Recepción
   const [nombre, setNombre] = useState('');
@@ -54,12 +62,13 @@ const Home: React.FC = () => {
   const [valor, setValor] = useState('');
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   
-  // Estados de Formularios Salidas (Ventas)
+  // Estados de Formularios Salidas
+  const [motivoSalida, setMotivoSalida] = useState<'venta' | 'merma'>('venta'); // NUEVO
   const [ventaProductId, setVentaProductId] = useState('');
   const [ventaQty, setVentaQty] = useState('');
   const [ventaFecha, setVentaFecha] = useState(new Date().toISOString().split('T')[0]);
-  const [tipoVenta, setTipoVenta] = useState<'unidad' | 'mayoreo'>('unidad'); // NUEVO
-  const [precioMayoreo, setPrecioMayoreo] = useState(''); // NUEVO
+  const [tipoVenta, setTipoVenta] = useState<'unidad' | 'mayoreo'>('unidad'); 
+  const [precioMayoreo, setPrecioMayoreo] = useState(''); 
 
   // Estados de Análisis y Temporada
   const [abcResult, setAbcResult] = useState<AbcResult | null>(null);
@@ -86,7 +95,14 @@ const Home: React.FC = () => {
       setVentas(items);
     });
 
-    return () => { unsubInv(); unsubVent(); };
+    const mermaQ = query(collection(db, 'mermas'), orderBy('createdAt', 'desc'));
+    const unsubMerma = onSnapshot(mermaQ, (snapshot) => {
+      const items: ItemMerma[] = [];
+      snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() } as ItemMerma));
+      setMermas(items);
+    });
+
+    return () => { unsubInv(); unsubVent(); unsubMerma(); };
   }, []);
 
   // Funciones de Guardado
@@ -113,33 +129,45 @@ const Home: React.FC = () => {
     e.preventDefault();
     if (!ventaProductId || !ventaQty || !ventaFecha) return;
     
-    // Validación: Si es mayoreo, obligar a poner precio
-    if (tipoVenta === 'mayoreo' && !precioMayoreo) {
-      setToastMessage("¡Error: Ingresa el precio total del mayoreo!");
-      setShowToast(true);
-      return;
-    }
-
     try {
-      await addDoc(collection(db, 'ventas'), {
-        productId: ventaProductId,
-        qtySold: parseInt(ventaQty),
-        date: ventaFecha,
-        tipoVenta: tipoVenta, // Guarda si fue unidad o mayoreo
-        precioMayoreo: tipoVenta === 'mayoreo' ? parseFloat(precioMayoreo) : null, // Guarda el cobro total si aplica
-        createdAt: serverTimestamp()
-      });
+      if (motivoSalida === 'merma') {
+        // REGISTRAR MERMA
+        await addDoc(collection(db, 'mermas'), {
+          productId: ventaProductId,
+          qtyDefective: parseInt(ventaQty),
+          date: ventaFecha,
+          createdAt: serverTimestamp()
+        });
+        setToastMessage("¡Merma registrada (Inventario descontado)!");
+      } else {
+        // REGISTRAR VENTA
+        if (tipoVenta === 'mayoreo' && !precioMayoreo) {
+          setToastMessage("¡Error: Ingresa el cobro total del mayoreo!");
+          setShowToast(true);
+          return;
+        }
+        await addDoc(collection(db, 'ventas'), {
+          productId: ventaProductId,
+          qtySold: parseInt(ventaQty),
+          date: ventaFecha,
+          tipoVenta: tipoVenta,
+          precioMayoreo: tipoVenta === 'mayoreo' ? parseFloat(precioMayoreo) : null,
+          createdAt: serverTimestamp()
+        });
+        setToastMessage("¡Salida de venta registrada!");
+      }
+
+      // Limpiar Formulario
       setVentaProductId(''); setVentaQty(''); setVentaFecha(new Date().toISOString().split('T')[0]);
       setTipoVenta('unidad'); setPrecioMayoreo('');
-      setToastMessage("¡Salida registrada con éxito!");
       setShowToast(true);
-      setAbcResult(null); // Limpiar ABC para forzar recálculo
+      setAbcResult(null); // Limpiar ABC
     } catch (error) {
       console.error(error);
     }
   };
 
-  // Función Calcular ABC
+  // Función Calcular ABC (Ojo: Sólo usa VENTAS, la merma no genera valor)
   const calculateABC = () => {
     const salesByProduct: Record<string, number> = {};
     ventas.forEach(sale => {
@@ -154,7 +182,6 @@ const Home: React.FC = () => {
       return { ...prod, sold, usageValue } as AbcItem; 
     });
 
-    // Ordenar de mayor a menor valor de uso
     productsWithValue.sort((a, b) => b.usageValue - a.usageValue);
 
     let cumulativeValue = 0;
@@ -178,7 +205,6 @@ const Home: React.FC = () => {
     setAbcResult(result);
   };
 
-  // Función Temporada
   const getFilteredSeasonData = () => {
     if (!seasonDate) return [];
     const targetDate = new Date(seasonDate);
@@ -195,6 +221,7 @@ const Home: React.FC = () => {
 
     const targetWeek = getWeek(targetDate);
 
+    // Solo contamos Ventas para el explorador
     const filteredSales = ventas.filter(sale => {
       const saleDate = new Date(sale.date);
       saleDate.setMinutes(saleDate.getMinutes() + saleDate.getTimezoneOffset());
@@ -222,8 +249,19 @@ const Home: React.FC = () => {
 
   const seasonalData = getFilteredSeasonData();
 
-  // Calcular Inversión Total para mostrar en Recepción
-  const inversionTotal = inventario.reduce((acc, item) => acc + (item.cantidad * item.valor), 0);
+  // Historial Unificado para Mostrar en la Tabla de Salidas (Ordenado por Fecha)
+  const historialUnificado = [
+    ...ventas.map(v => ({ ...v, tipoHistorial: 'venta' as const })),
+    ...mermas.map(m => ({ ...m, tipoHistorial: 'merma' as const }))
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  // Calcular Inversión Total (Basado en el Stock Real Actual)
+  const inversionTotal = inventario.reduce((acc, item) => {
+    const ventasTotales = ventas.filter(v => v.productId === item.id).reduce((sum, v) => sum + v.qtySold, 0);
+    const mermasTotales = mermas.filter(m => m.productId === item.id).reduce((sum, m) => sum + m.qtyDefective, 0);
+    const stockReal = item.cantidad - ventasTotales - mermasTotales;
+    return acc + (stockReal > 0 ? stockReal * item.valor : 0);
+  }, 0);
 
   return (
     <IonPage>
@@ -270,7 +308,7 @@ const Home: React.FC = () => {
                     <input type="text" required value={nombre} onChange={e => setNombre(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800 text-base" placeholder="Ej. Tarimas de madera" />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Cantidad</label>
+                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Cantidad Inicial</label>
                     <input type="number" required min="1" value={cantidad} onChange={e => setCantidad(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-inner text-slate-800 text-base" placeholder="0" />
                   </div>
                   <div>
@@ -289,13 +327,13 @@ const Home: React.FC = () => {
                 </form>
               </div>
 
-              {/* TABLA RESPONSIVA DE INVENTARIO CON INVERSIÓN INDIVIDUAL */}
+              {/* TABLA RESPONSIVA DE INVENTARIO (CON STOCK ACTUAL Y MERMA) */}
               <div className="bg-white/80 md:bg-white/70 backdrop-blur-xl rounded-[2rem] md:rounded-[2.5rem] shadow-xl border border-white/50 p-5 md:p-8">
                 
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 md:mb-6 ml-1 gap-3">
-                  <h3 className="text-lg md:text-xl font-bold text-slate-800">Inventario Actual</h3>
+                  <h3 className="text-lg md:text-xl font-bold text-slate-800">Inventario en Almacén</h3>
                   <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100/50 text-slate-600 px-4 py-2.5 rounded-xl shadow-sm font-bold flex items-center text-sm md:text-base w-full md:w-auto">
-                    💰 Inversión Total: 
+                    💰 Inversión en Stock: 
                     <span className="ml-2 text-indigo-600 text-lg">
                       ${inversionTotal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
@@ -307,41 +345,53 @@ const Home: React.FC = () => {
                     <thead className="hidden md:table-header-group">
                       <tr className="bg-slate-200/50 text-slate-600 text-sm font-bold uppercase tracking-wider rounded-t-2xl">
                         <th className="px-6 py-4 rounded-tl-2xl">Producto</th>
-                        <th className="px-6 py-4">Cantidad</th>
-                        <th className="px-6 py-4">V. Unitario</th>
-                        <th className="px-6 py-4">Inversión (Total)</th> {/* NUEVA COLUMNA */}
-                        <th className="px-6 py-4 rounded-tr-2xl">Fecha</th>
+                        <th className="px-6 py-4">Ingresó</th>
+                        <th className="px-6 py-4 text-red-500">Fallidos</th>
+                        <th className="px-6 py-4 text-indigo-600">Stock Actual</th>
+                        <th className="px-6 py-4">V. Unit.</th>
+                        <th className="px-6 py-4 rounded-tr-2xl">Inversión</th>
                       </tr>
                     </thead>
                     <tbody className="flex flex-col gap-4 md:table-row-group md:gap-0">
                       {inventario.length === 0 ? (
-                        <tr className="block md:table-row bg-white/50 md:bg-transparent rounded-2xl md:rounded-none"><td colSpan={5} className="px-4 py-8 text-center text-slate-400 font-medium text-sm">Sin inventario registrado</td></tr>
+                        <tr className="block md:table-row bg-white/50 md:bg-transparent rounded-2xl md:rounded-none"><td colSpan={6} className="px-4 py-8 text-center text-slate-400 font-medium text-sm">Sin inventario registrado</td></tr>
                       ) : (
-                        inventario.map(item => (
-                          <tr key={item.id} className="block md:table-row bg-white/70 md:bg-white/40 md:hover:bg-white/60 transition-colors rounded-[1.5rem] md:rounded-none p-4 md:p-0 shadow-sm md:shadow-none border border-white md:border-b md:border-slate-100">
-                            <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 font-semibold text-slate-800 text-sm md:text-base border-b border-slate-200/60 md:border-none">
-                              <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Producto</span>
-                              <span className="text-right md:text-left">{item.nombre}</span>
-                            </td>
-                            <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-slate-600 text-sm md:text-base border-b border-slate-200/60 md:border-none">
-                              <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Cantidad</span>
-                              <span className="text-right md:text-left">{item.cantidad.toLocaleString()}</span>
-                            </td>
-                            <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-slate-600 text-sm md:text-base border-b border-slate-200/60 md:border-none">
-                              <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">V. Unit.</span>
-                              <span className="text-right md:text-left">${item.valor?.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}</span>
-                            </td>
-                            {/* NUEVA CELDA: INVERSIÓN POR PRODUCTO */}
-                            <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-indigo-600 font-bold text-sm md:text-base border-b border-slate-200/60 md:border-none">
-                              <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Inversión (Total)</span>
-                              <span className="text-right md:text-left">${(item.cantidad * item.valor).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                            </td>
-                            <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-slate-500 text-xs md:text-sm">
-                              <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Fecha</span>
-                              <span className="text-right md:text-left">{item.fechaLlegada}</span>
-                            </td>
-                          </tr>
-                        ))
+                        inventario.map(item => {
+                          // Cálculos en tiempo real
+                          const ventasItem = ventas.filter(v => v.productId === item.id).reduce((sum, v) => sum + v.qtySold, 0);
+                          const mermasItem = mermas.filter(m => m.productId === item.id).reduce((sum, m) => sum + m.qtyDefective, 0);
+                          const stockActual = item.cantidad - ventasItem - mermasItem;
+                          const inversionItem = stockActual > 0 ? stockActual * item.valor : 0;
+
+                          return (
+                            <tr key={item.id} className="block md:table-row bg-white/70 md:bg-white/40 md:hover:bg-white/60 transition-colors rounded-[1.5rem] md:rounded-none p-4 md:p-0 shadow-sm md:shadow-none border border-white md:border-b md:border-slate-100">
+                              <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 font-semibold text-slate-800 text-sm md:text-base border-b border-slate-200/60 md:border-none">
+                                <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Producto</span>
+                                <span className="text-right md:text-left">{item.nombre}</span>
+                              </td>
+                              <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-slate-500 text-sm md:text-base border-b border-slate-200/60 md:border-none">
+                                <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Ingresó</span>
+                                <span className="text-right md:text-left">{item.cantidad.toLocaleString()}</span>
+                              </td>
+                              <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-red-500 font-bold text-sm md:text-base border-b border-slate-200/60 md:border-none">
+                                <span className="md:hidden text-xs text-red-400 font-bold uppercase tracking-wider">Fallidos (Merma)</span>
+                                <span className="text-right md:text-left">{mermasItem.toLocaleString()}</span>
+                              </td>
+                              <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-indigo-600 font-black text-sm md:text-lg border-b border-slate-200/60 md:border-none bg-indigo-50/30">
+                                <span className="md:hidden text-xs text-indigo-500 font-bold uppercase tracking-wider">Stock Actual</span>
+                                <span className="text-right md:text-left">{stockActual.toLocaleString()}</span>
+                              </td>
+                              <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-slate-600 text-sm md:text-base border-b border-slate-200/60 md:border-none">
+                                <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">V. Unit.</span>
+                                <span className="text-right md:text-left">${item.valor?.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}</span>
+                              </td>
+                              <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-emerald-600 font-bold text-sm md:text-base">
+                                <span className="md:hidden text-xs text-emerald-500 font-bold uppercase tracking-wider">Inversión</span>
+                                <span className="text-right md:text-left">${inversionItem.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
@@ -350,69 +400,98 @@ const Home: React.FC = () => {
             </div>
           )}
 
-          {/* VISTA 2: SALIDAS */}
+          {/* VISTA 2: SALIDAS Y MERMAS */}
           {activeTab === 'salidas' && (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-5 md:space-y-6">
               <div className="bg-white/80 md:bg-white/70 backdrop-blur-xl rounded-[2rem] md:rounded-[2.5rem] shadow-xl border border-white/50 p-5 md:p-8">
                 <h2 className="text-xl md:text-2xl font-bold text-slate-800 mb-5 flex items-center">
                   <span className="bg-emerald-100 text-emerald-600 p-2 rounded-xl md:rounded-2xl mr-3"><ArrowUpFromLine size={20} className="md:w-6 md:h-6" /></span>
-                  Registro de Salidas
+                  Control de Salidas
                 </h2>
                 
                 <form onSubmit={guardarSalida} className="grid grid-cols-1 md:grid-cols-5 gap-4 md:gap-6 items-end">
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Seleccionar Producto</label>
-                    <select required value={ventaProductId} onChange={e => setVentaProductId(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-slate-800 font-medium text-base">
-                      <option value="">Selecciona del inventario...</option>
-                      {inventario.map(item => <option key={item.id} value={item.id}>{item.nombre}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Cantidad Movida</label>
-                    <input type="number" required min="1" value={ventaQty} onChange={e => setVentaQty(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-slate-800 text-base" placeholder="0" />
-                  </div>
                   
-                  {/* NUEVO INTERRUPTOR: TIPO DE VENTA */}
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Tipo de Venta</label>
-                    <select value={tipoVenta} onChange={e => setTipoVenta(e.target.value as any)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-slate-800 font-medium text-base">
-                      <option value="unidad">Por Unidad</option>
-                      <option value="mayoreo">Por Mayoreo</option>
-                    </select>
+                  {/* TIPO DE MOVIMIENTO (VENTA O MERMA) */}
+                  <div className="md:col-span-5 bg-slate-100/50 p-4 rounded-2xl border border-slate-200 mb-2">
+                    <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">¿Qué tipo de salida es?</label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" value="venta" checked={motivoSalida === 'venta'} onChange={() => setMotivoSalida('venta')} className="w-4 h-4 text-emerald-600 focus:ring-emerald-500 border-slate-300" />
+                        <span className="text-slate-800 font-semibold">Venta (Comercial)</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" value="merma" checked={motivoSalida === 'merma'} onChange={() => setMotivoSalida('merma')} className="w-4 h-4 text-red-600 focus:ring-red-500 border-slate-300" />
+                        <span className="text-red-600 font-semibold">Merma (Defectuoso / Pérdida)</span>
+                      </label>
+                    </div>
                   </div>
 
-                  {/* NUEVO CAMPO: COBRO MAYOREO (Solo aparece si se elige Mayoreo) */}
-                  {tipoVenta === 'mayoreo' ? (
-                    <div>
-                      <label className="block text-sm font-bold text-emerald-600 mb-1.5 ml-1">Cobro Total Lote</label>
-                      <input type="number" step="0.01" required min="1" value={precioMayoreo} onChange={e => setPrecioMayoreo(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-emerald-50 border border-emerald-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-emerald-800 font-bold text-base" placeholder="$0.00" />
-                    </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Seleccionar Producto</label>
+                    <select required value={ventaProductId} onChange={e => setVentaProductId(e.target.value)} className={`w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 outline-none transition-all shadow-inner text-slate-800 font-medium text-base focus:ring-4 ${motivoSalida === 'venta' ? 'focus:ring-emerald-100 focus:border-emerald-400' : 'focus:ring-red-100 focus:border-red-400'}`}>
+                      <option value="">Selecciona del inventario...</option>
+                      {inventario.map(item => {
+                        const stock = item.cantidad - ventas.filter(v => v.productId === item.id).reduce((s, v) => s + v.qtySold, 0) - mermas.filter(m => m.productId === item.id).reduce((s, m) => s + m.qtyDefective, 0);
+                        return <option key={item.id} value={item.id}>{item.nombre} (Stock: {stock})</option>
+                      })}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Cantidad a Retirar</label>
+                    <input type="number" required min="1" value={ventaQty} onChange={e => setVentaQty(e.target.value)} className={`w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 outline-none transition-all shadow-inner text-slate-800 text-base focus:ring-4 ${motivoSalida === 'venta' ? 'focus:ring-emerald-100 focus:border-emerald-400' : 'focus:ring-red-100 focus:border-red-400'}`} placeholder="0" />
+                  </div>
+
+                  {/* FORMULARIO DINÁMICO SEGÚN SI ES VENTA O MERMA */}
+                  {motivoSalida === 'venta' ? (
+                    <>
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Tipo de Venta</label>
+                        <select value={tipoVenta} onChange={e => setTipoVenta(e.target.value as any)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-slate-800 font-medium text-base">
+                          <option value="unidad">Por Unidad</option>
+                          <option value="mayoreo">Por Mayoreo</option>
+                        </select>
+                      </div>
+
+                      {tipoVenta === 'mayoreo' ? (
+                        <div>
+                          <label className="block text-sm font-bold text-emerald-600 mb-1.5 ml-1">Cobro Total Lote</label>
+                          <input type="number" step="0.01" required min="1" value={precioMayoreo} onChange={e => setPrecioMayoreo(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-emerald-50 border border-emerald-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-emerald-800 font-bold text-base" placeholder="$0.00" />
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Fecha de Salida</label>
+                          <input type="date" required value={ventaFecha} onChange={e => setVentaFecha(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-slate-800 text-base" />
+                        </div>
+                      )}
+                    </>
                   ) : (
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Fecha de Salida</label>
-                      <input type="date" required value={ventaFecha} onChange={e => setVentaFecha(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-slate-800 text-base" />
+                    // SI ES MERMA, SÓLO PIDE FECHA (Ocupando más espacio)
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-semibold text-red-600 mb-1.5 ml-1">Fecha del Descuento</label>
+                      <input type="date" required value={ventaFecha} onChange={e => setVentaFecha(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-red-50 border border-red-200 focus:ring-4 focus:ring-red-100 focus:border-red-400 outline-none transition-all shadow-inner text-red-800 font-bold text-base" />
                     </div>
                   )}
 
                   <div className="md:col-span-5 flex flex-col md:flex-row justify-between items-center mt-4">
-                    {/* Si es mayoreo, mostramos la fecha abajo para no amontonar */}
-                    {tipoVenta === 'mayoreo' ? (
+                    {/* Input extra de fecha para alinear en Mayoreo */}
+                    {motivoSalida === 'venta' && tipoVenta === 'mayoreo' ? (
                       <div className="w-full md:w-auto mb-4 md:mb-0 md:flex-1 md:max-w-xs">
                         <label className="block text-sm font-semibold text-slate-600 mb-1.5 ml-1">Fecha de Salida</label>
                         <input type="date" required value={ventaFecha} onChange={e => setVentaFecha(e.target.value)} className="w-full px-4 py-3.5 md:py-4 rounded-xl md:rounded-2xl bg-white/70 border border-slate-200 focus:ring-4 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all shadow-inner text-slate-800 text-base" />
                       </div>
                     ) : (<div></div>)}
 
-                    <button type="submit" className="w-full md:w-auto flex items-center justify-center px-8 py-4 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-2xl hover:scale-105 transition-all shadow-lg hover:shadow-emerald-500/30 font-bold tracking-wide text-base">
-                      <Plus size={20} className="mr-2" /> Registrar Rotación
+                    <button type="submit" className={`w-full md:w-auto flex items-center justify-center px-8 py-4 text-white rounded-2xl hover:scale-105 transition-all shadow-lg font-bold tracking-wide text-base ${motivoSalida === 'venta' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:shadow-emerald-500/30' : 'bg-gradient-to-r from-red-500 to-rose-600 hover:shadow-red-500/30'}`}>
+                      <Plus size={20} className="mr-2" /> 
+                      {motivoSalida === 'venta' ? 'Registrar Venta' : 'Dar de Baja (Merma)'}
                     </button>
                   </div>
                 </form>
               </div>
 
-              {/* TABLA RESPONSIVA DE SALIDAS (Muestra si fue Unidad o Mayoreo) */}
+              {/* TABLA RESPONSIVA DE HISTORIAL (Muestra Ventas y Mermas) */}
               <div className="bg-white/80 md:bg-white/70 backdrop-blur-xl rounded-[2rem] md:rounded-[2.5rem] shadow-xl border border-white/50 p-5 md:p-8">
-                <h3 className="text-lg md:text-xl font-bold text-slate-800 mb-4 ml-1">Historial de Rotación</h3>
+                <h3 className="text-lg md:text-xl font-bold text-slate-800 mb-4 ml-1">Historial de Movimientos</h3>
                 
                 <div className="w-full">
                   <table className="w-full text-left border-collapse">
@@ -425,38 +504,44 @@ const Home: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="flex flex-col gap-4 md:table-row-group md:gap-0">
-                      {ventas.length === 0 ? (
+                      {historialUnificado.length === 0 ? (
                         <tr className="block md:table-row bg-white/50 md:bg-transparent rounded-2xl md:rounded-none"><td colSpan={4} className="px-4 py-8 text-center text-slate-400 font-medium text-sm">Sin movimientos</td></tr>
                       ) : (
-                        ventas.map(sale => {
-                          const prod = inventario.find(p => p.id === sale.productId);
+                        historialUnificado.map((mov: any) => {
+                          const prod = inventario.find(p => p.id === mov.productId);
+                          const esMerma = mov.tipoHistorial === 'merma';
+                          const cantidad = esMerma ? mov.qtyDefective : mov.qtySold;
+
                           return (
-                            <tr key={sale.id} className="block md:table-row bg-white/70 md:bg-white/40 md:hover:bg-white/60 transition-colors rounded-[1.5rem] md:rounded-none p-4 md:p-0 shadow-sm md:shadow-none border border-white md:border-b md:border-slate-100">
+                            <tr key={mov.id} className={`block md:table-row bg-white/70 md:bg-white/40 md:hover:bg-white/60 transition-colors rounded-[1.5rem] md:rounded-none p-4 md:p-0 shadow-sm md:shadow-none border border-white md:border-b md:border-slate-100 ${esMerma ? 'bg-red-50/30' : ''}`}>
                               <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-slate-500 text-xs md:text-sm border-b border-slate-200/60 md:border-none">
                                 <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Fecha</span>
-                                <span className="text-right md:text-left">{sale.date}</span>
+                                <span className="text-right md:text-left">{mov.date}</span>
                               </td>
                               <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 font-semibold text-slate-800 text-sm md:text-base border-b border-slate-200/60 md:border-none">
                                 <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Producto</span>
                                 <span className="text-right md:text-left">{prod ? prod.nombre : 'Desconocido'}</span>
                               </td>
-                              {/* NUEVA CELDA: Modalidad (Unidad o Mayoreo + Cobro) */}
+                              
                               <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-slate-600 text-sm md:text-base border-b border-slate-200/60 md:border-none">
                                 <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Modalidad</span>
                                 <div className="text-right md:text-left flex flex-col md:block">
-                                  {sale.tipoVenta === 'mayoreo' ? (
+                                  {esMerma ? (
+                                    <span className="bg-red-100 text-red-700 text-xs px-2 py-0.5 rounded-md font-bold">MERMA</span>
+                                  ) : mov.tipoVenta === 'mayoreo' ? (
                                     <>
                                       <span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-md font-bold mb-1 md:mb-0 md:mr-2">MAYOREO</span>
-                                      <span className="font-semibold text-emerald-600">${sale.precioMayoreo?.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+                                      <span className="font-semibold text-emerald-600">${mov.precioMayoreo?.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
                                     </>
                                   ) : (
-                                    <span className="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-md font-bold">UNIDAD</span>
+                                    <span className="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-md font-bold">UNIDAD (VENTA)</span>
                                   )}
                                 </div>
                               </td>
-                              <td className="flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 text-emerald-600 font-bold text-sm md:text-base">
+
+                              <td className={`flex justify-between items-center md:table-cell px-2 md:px-6 py-2.5 md:py-4 font-bold text-sm md:text-base ${esMerma ? 'text-red-600' : 'text-emerald-600'}`}>
                                 <span className="md:hidden text-xs text-slate-500 font-bold uppercase tracking-wider">Volumen</span>
-                                <span className="text-right md:text-left">-{sale.qtySold.toLocaleString()}</span>
+                                <span className="text-right md:text-left">-{cantidad.toLocaleString()}</span>
                               </td>
                             </tr>
                           );
